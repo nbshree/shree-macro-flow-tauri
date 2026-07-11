@@ -1,0 +1,4 @@
+interface:
+  display_name: '生成逆水寒职业主题'
+  short_description: '根据职业立绘生成、接入并完整验证逆水寒职业分层主题包'
+  default_prompt: '使用 $create-nishuihan-theme 根据我附上的职业立绘生成并接入完整职业主题。'
