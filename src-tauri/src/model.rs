@@ -1,0 +1,714 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+
+pub const EMERGENCY_STOP_HOTKEY: &str = "CommandOrControl+Alt+Esc";
+pub const DEFAULT_PROFILE_NAME: &str = "默认方案";
+pub const PROFILE_FILE_NAME: &str = "macro-profiles.json";
+
+static ID_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PointAction {
+    Click,
+    Key,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum KeyModifier {
+    Control,
+    Alt,
+    Shift,
+}
+
+impl KeyModifier {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Control => "Ctrl",
+            Self::Alt => "Alt",
+            Self::Shift => "Shift",
+        }
+    }
+
+    pub fn accelerator_label(self) -> &'static str {
+        match self {
+            Self::Control => "Control",
+            Self::Alt => "Alt",
+            Self::Shift => "Shift",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Point {
+    pub id: String,
+    pub label: String,
+    pub action: PointAction,
+    pub x: i32,
+    pub y: i32,
+    pub key: String,
+    pub modifiers: Vec<KeyModifier>,
+    pub delay_seconds: f64,
+    pub created_at: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Hotkeys {
+    pub capture: String,
+    pub start: String,
+    pub stop: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LoopMode {
+    Count,
+    Infinite,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Settings {
+    pub click_interval_seconds: f64,
+    pub loop_interval_seconds: f64,
+    pub start_delay_seconds: f64,
+    pub loop_mode: LoopMode,
+    pub loop_count: u32,
+    pub hotkeys: Hotkeys,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MacroProfile {
+    pub id: String,
+    pub name: String,
+    pub points: Vec<Point>,
+    pub settings: Settings,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileSummary {
+    pub id: String,
+    pub name: String,
+    pub updated_at: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedData {
+    pub active_profile_id: String,
+    pub profiles: Vec<MacroProfile>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MacroState {
+    pub points: Vec<Point>,
+    pub settings: Settings,
+    pub active_profile_id: String,
+    pub profiles: Vec<ProfileSummary>,
+    pub is_recording: bool,
+    pub is_running: bool,
+    pub current_index: i32,
+    pub countdown_remaining: u32,
+    pub completed_loops: u32,
+    pub hotkey_errors: Vec<String>,
+    pub logs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PointPatch {
+    pub label: Option<String>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub key: Option<String>,
+    pub modifiers: Option<Vec<KeyModifier>>,
+    pub delay_seconds: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HotkeysPatch {
+    pub capture: Option<String>,
+    pub start: Option<String>,
+    pub stop: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsPatch {
+    pub click_interval_seconds: Option<f64>,
+    pub loop_interval_seconds: Option<f64>,
+    pub start_delay_seconds: Option<f64>,
+    pub loop_mode: Option<LoopMode>,
+    pub loop_count: Option<f64>,
+    pub hotkeys: Option<HotkeysPatch>,
+}
+
+pub fn now_millis() -> i64 {
+    Utc::now().timestamp_millis()
+}
+
+pub fn create_id() -> String {
+    let sequence = ID_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    format!("{}-{sequence:x}", now_millis())
+}
+
+pub fn default_settings() -> Settings {
+    Settings {
+        click_interval_seconds: 0.5,
+        loop_interval_seconds: 1.0,
+        start_delay_seconds: 1.0,
+        loop_mode: LoopMode::Infinite,
+        loop_count: 1,
+        hotkeys: Hotkeys {
+            capture: "CommandOrControl+Alt+Q".into(),
+            start: "CommandOrControl+Alt+P".into(),
+            stop: "CommandOrControl+Alt+O".into(),
+        },
+    }
+}
+
+pub fn create_default_profile_store() -> PersistedData {
+    let now = now_millis();
+    let profile = MacroProfile {
+        id: create_id(),
+        name: DEFAULT_PROFILE_NAME.into(),
+        points: Vec::new(),
+        settings: default_settings(),
+        created_at: now,
+        updated_at: now,
+    };
+
+    PersistedData {
+        active_profile_id: profile.id.clone(),
+        profiles: vec![profile],
+    }
+}
+
+pub fn state_from_store(store: &mut PersistedData) -> MacroState {
+    if store.profiles.is_empty() {
+        *store = create_default_profile_store();
+    }
+
+    let active_index = store
+        .profiles
+        .iter()
+        .position(|profile| profile.id == store.active_profile_id)
+        .unwrap_or(0);
+    let active = &store.profiles[active_index];
+    store.active_profile_id = active.id.clone();
+
+    MacroState {
+        points: active.points.clone(),
+        settings: active.settings.clone(),
+        active_profile_id: active.id.clone(),
+        profiles: profile_summaries(store),
+        is_recording: false,
+        is_running: false,
+        current_index: -1,
+        countdown_remaining: 0,
+        completed_loops: 0,
+        hotkey_errors: Vec::new(),
+        logs: Vec::new(),
+    }
+}
+
+pub fn profile_summaries(store: &PersistedData) -> Vec<ProfileSummary> {
+    store
+        .profiles
+        .iter()
+        .map(|profile| ProfileSummary {
+            id: profile.id.clone(),
+            name: profile.name.clone(),
+            updated_at: profile.updated_at,
+        })
+        .collect()
+}
+
+pub fn sanitize_persisted(value: &Value) -> PersistedData {
+    let Some(object) = value.as_object() else {
+        return create_default_profile_store();
+    };
+
+    let profiles = object
+        .get("profiles")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .enumerate()
+                .filter_map(|(index, profile)| {
+                    sanitize_profile(profile, &format!("{DEFAULT_PROFILE_NAME} {}", index + 1))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    if profiles.is_empty() {
+        return create_default_profile_store();
+    }
+
+    let requested_active = object
+        .get("activeProfileId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let active_profile_id = profiles
+        .iter()
+        .find(|profile| profile.id == requested_active)
+        .unwrap_or(&profiles[0])
+        .id
+        .clone();
+
+    PersistedData {
+        active_profile_id,
+        profiles,
+    }
+}
+
+pub fn sanitize_profile(value: &Value, fallback_name: &str) -> Option<MacroProfile> {
+    let object = value.as_object()?;
+    let now = now_millis();
+    let points = object
+        .get("points")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .enumerate()
+                .filter_map(|(index, point)| sanitize_point(point, index))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Some(MacroProfile {
+        id: non_empty_string(object.get("id")).unwrap_or_else(create_id),
+        name: sanitize_profile_name(object.get("name"), fallback_name),
+        points,
+        settings: sanitize_settings(object.get("settings")),
+        created_at: finite_number(object.get("createdAt"))
+            .map(|value| value as i64)
+            .unwrap_or(now),
+        updated_at: finite_number(object.get("updatedAt"))
+            .map(|value| value as i64)
+            .unwrap_or(now),
+    })
+}
+
+pub fn sanitize_profile_name(value: Option<&Value>, fallback: &str) -> String {
+    let name = value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .map(|value| truncate_chars(value, 50))
+        .unwrap_or_default();
+    if name.is_empty() {
+        fallback.into()
+    } else {
+        name
+    }
+}
+
+pub fn sanitize_point(value: &Value, index: usize) -> Option<Point> {
+    let object = value.as_object()?;
+    let action = if object.get("action").and_then(Value::as_str) == Some("key") {
+        PointAction::Key
+    } else {
+        PointAction::Click
+    };
+    let x = finite_number(object.get("x"));
+    let y = finite_number(object.get("y"));
+    if action == PointAction::Click && (x.is_none() || y.is_none()) {
+        return None;
+    }
+
+    let key = object
+        .get("key")
+        .and_then(Value::as_str)
+        .map(normalize_key)
+        .unwrap_or_default();
+    if action == PointAction::Key && virtual_key_code(&key).is_none() {
+        return None;
+    }
+
+    Some(Point {
+        id: non_empty_string(object.get("id")).unwrap_or_else(create_id),
+        label: object
+            .get("label")
+            .and_then(Value::as_str)
+            .map(|value| truncate_chars(value, 60))
+            .unwrap_or_else(|| format!("步骤 {}", index + 1)),
+        action,
+        x: clamp_f64(x.unwrap_or(0.0), 0.0, -100_000.0, 100_000.0).round() as i32,
+        y: clamp_f64(y.unwrap_or(0.0), 0.0, -100_000.0, 100_000.0).round() as i32,
+        key,
+        modifiers: sanitize_modifiers(object.get("modifiers")),
+        delay_seconds: clamp_f64(
+            finite_number(object.get("delaySeconds")).unwrap_or(f64::NAN),
+            default_settings().click_interval_seconds,
+            0.1,
+            3600.0,
+        ),
+        created_at: finite_number(object.get("createdAt"))
+            .map(|value| value as i64)
+            .unwrap_or_else(now_millis),
+    })
+}
+
+pub fn sanitize_settings(value: Option<&Value>) -> Settings {
+    let defaults = default_settings();
+    let object = value.and_then(Value::as_object);
+    let hotkey_object = object
+        .and_then(|settings| settings.get("hotkeys"))
+        .and_then(Value::as_object);
+
+    Settings {
+        click_interval_seconds: clamp_optional_number(
+            object.and_then(|settings| settings.get("clickIntervalSeconds")),
+            defaults.click_interval_seconds,
+            0.1,
+            3600.0,
+        ),
+        loop_interval_seconds: clamp_optional_number(
+            object.and_then(|settings| settings.get("loopIntervalSeconds")),
+            defaults.loop_interval_seconds,
+            0.0,
+            3600.0,
+        ),
+        start_delay_seconds: clamp_optional_number(
+            object.and_then(|settings| settings.get("startDelaySeconds")),
+            defaults.start_delay_seconds,
+            0.0,
+            60.0,
+        ),
+        loop_mode: if object
+            .and_then(|settings| settings.get("loopMode"))
+            .and_then(Value::as_str)
+            == Some("infinite")
+        {
+            LoopMode::Infinite
+        } else {
+            LoopMode::Count
+        },
+        loop_count: clamp_optional_number(
+            object.and_then(|settings| settings.get("loopCount")),
+            defaults.loop_count as f64,
+            1.0,
+            9999.0,
+        )
+        .round() as u32,
+        hotkeys: Hotkeys {
+            capture: sanitize_hotkey_field(hotkey_object, "capture", &defaults.hotkeys.capture),
+            start: sanitize_hotkey_field(hotkey_object, "start", &defaults.hotkeys.start),
+            stop: sanitize_hotkey_field(hotkey_object, "stop", &defaults.hotkeys.stop),
+        },
+    }
+}
+
+fn sanitize_hotkey_field(object: Option<&Map<String, Value>>, key: &str, fallback: &str) -> String {
+    object
+        .and_then(|hotkeys| hotkeys.get(key))
+        .and_then(Value::as_str)
+        .map(normalize_hotkey)
+        .unwrap_or_else(|| fallback.into())
+}
+
+fn clamp_optional_number(value: Option<&Value>, fallback: f64, min: f64, max: f64) -> f64 {
+    clamp_f64(finite_number(value).unwrap_or(f64::NAN), fallback, min, max)
+}
+
+pub fn clamp_f64(value: f64, fallback: f64, min: f64, max: f64) -> f64 {
+    if !value.is_finite() {
+        fallback
+    } else {
+        value.clamp(min, max)
+    }
+}
+
+fn finite_number(value: Option<&Value>) -> Option<f64> {
+    let number = match value? {
+        Value::Number(value) => value.as_f64(),
+        Value::String(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                Some(0.0)
+            } else {
+                trimmed.parse().ok()
+            }
+        }
+        Value::Bool(value) => Some(if *value { 1.0 } else { 0.0 }),
+        Value::Null => Some(0.0),
+        _ => None,
+    }?;
+    number.is_finite().then_some(number)
+}
+
+fn non_empty_string(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+pub fn truncate_chars(value: &str, max_chars: usize) -> String {
+    value.chars().take(max_chars).collect()
+}
+
+pub fn normalize_key(value: &str) -> String {
+    let key = value.trim();
+    if key.chars().count() == 1 {
+        return key.to_uppercase();
+    }
+    match key {
+        "Escape" => "Esc".into(),
+        " " => "Space".into(),
+        _ => key.into(),
+    }
+}
+
+pub fn normalize_hotkey(value: &str) -> String {
+    let compact: String = value
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect();
+    let mut parts = compact.split('+').map(str::to_owned).collect::<Vec<_>>();
+    for part in &mut parts {
+        if part.eq_ignore_ascii_case("ctrl") {
+            *part = "CommandOrControl".into();
+        }
+    }
+    parts.join("+")
+}
+
+pub fn sanitize_modifiers(value: Option<&Value>) -> Vec<KeyModifier> {
+    let Some(values) = value.and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    [
+        ("Control", KeyModifier::Control),
+        ("Alt", KeyModifier::Alt),
+        ("Shift", KeyModifier::Shift),
+    ]
+    .into_iter()
+    .filter_map(|(name, modifier)| {
+        values
+            .iter()
+            .any(|value| value.as_str() == Some(name))
+            .then_some(modifier)
+    })
+    .collect()
+}
+
+pub fn sanitize_modifier_list(value: Vec<KeyModifier>) -> Vec<KeyModifier> {
+    [KeyModifier::Control, KeyModifier::Alt, KeyModifier::Shift]
+        .into_iter()
+        .filter(|modifier| value.contains(modifier))
+        .collect()
+}
+
+pub fn virtual_key_code(key: &str) -> Option<u16> {
+    let bytes = key.as_bytes();
+    if bytes.len() == 1 && (bytes[0].is_ascii_uppercase() || bytes[0].is_ascii_digit()) {
+        return Some(bytes[0] as u16);
+    }
+
+    match key {
+        "Backspace" => Some(0x08),
+        "Tab" => Some(0x09),
+        "Enter" => Some(0x0d),
+        "Esc" => Some(0x1b),
+        "Space" => Some(0x20),
+        "PageUp" => Some(0x21),
+        "PageDown" => Some(0x22),
+        "End" => Some(0x23),
+        "Home" => Some(0x24),
+        "ArrowLeft" => Some(0x25),
+        "ArrowUp" => Some(0x26),
+        "ArrowRight" => Some(0x27),
+        "ArrowDown" => Some(0x28),
+        "Insert" => Some(0x2d),
+        "Delete" => Some(0x2e),
+        _ => key
+            .strip_prefix('F')
+            .and_then(|value| value.parse::<u16>().ok())
+            .filter(|value| (1..=24).contains(value))
+            .map(|value| 0x70 + value - 1),
+    }
+}
+
+pub fn format_key_step(key: &str, modifiers: &[KeyModifier]) -> String {
+    modifiers
+        .iter()
+        .map(|modifier| modifier.label().to_owned())
+        .chain(std::iter::once(key.to_owned()))
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+pub fn key_step_conflicts_with_hotkey(
+    key: &str,
+    modifiers: &[KeyModifier],
+    hotkeys: &Hotkeys,
+) -> bool {
+    let accelerator = modifiers
+        .iter()
+        .map(|modifier| modifier.accelerator_label().to_owned())
+        .chain(std::iter::once(key.to_owned()))
+        .collect::<Vec<_>>()
+        .join("+")
+        .to_lowercase();
+    [
+        EMERGENCY_STOP_HOTKEY,
+        &hotkeys.capture,
+        &hotkeys.start,
+        &hotkeys.stop,
+    ]
+    .iter()
+    .any(|hotkey| hotkey.to_lowercase().replace("commandorcontrol", "control") == accelerator)
+}
+
+pub fn validate_hotkeys(hotkeys: &Hotkeys) -> Vec<String> {
+    let entries = [
+        ("capture", &hotkeys.capture),
+        ("start", &hotkeys.start),
+        ("stop", &hotkeys.stop),
+    ];
+    let mut errors = Vec::new();
+    let mut seen: Vec<(String, &str)> = Vec::new();
+
+    for (name, accelerator) in entries {
+        if accelerator.is_empty() {
+            errors.push(format!("热键不能为空：{name}"));
+            continue;
+        }
+        let key = accelerator.to_lowercase();
+        if key == EMERGENCY_STOP_HOTKEY.to_lowercase() {
+            errors.push(format!("热键 {accelerator} 已保留为紧急停止"));
+            continue;
+        }
+        if let Some((_, previous_name)) = seen.iter().find(|(value, _)| value == &key) {
+            errors.push(format!(
+                "热键重复：{previous_name} 与 {name} 都使用 {accelerator}"
+            ));
+            continue;
+        }
+        seen.push((key, name));
+    }
+    errors
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn legacy_json_is_loaded_and_sanitized() {
+        let raw = json!({
+            "activeProfileId": "legacy",
+            "profiles": [{
+                "id": "legacy",
+                "name": "  旧方案  ",
+                "points": [
+                    {
+                        "id": "click-1",
+                        "label": "坐标",
+                        "action": "click",
+                        "x": "120.7",
+                        "y": -42.4,
+                        "delaySeconds": 99999,
+                        "createdAt": 123
+                    },
+                    {
+                        "action": "key",
+                        "key": "Escape",
+                        "modifiers": ["Shift", "Control", "Shift"],
+                        "delaySeconds": 0
+                    },
+                    { "action": "click", "x": "not-a-number", "y": 1 }
+                ],
+                "settings": {
+                    "clickIntervalSeconds": 0,
+                    "loopIntervalSeconds": -10,
+                    "startDelaySeconds": 80,
+                    "loopMode": "infinite",
+                    "loopCount": 12000,
+                    "hotkeys": {
+                        "capture": " Ctrl + Alt + Q ",
+                        "start": "Ctrl+Alt+P",
+                        "stop": "Ctrl+Alt+O"
+                    }
+                },
+                "createdAt": 100,
+                "updatedAt": 200
+            }]
+        });
+
+        let store = sanitize_persisted(&raw);
+        assert_eq!(store.active_profile_id, "legacy");
+        assert_eq!(store.profiles.len(), 1);
+        let profile = &store.profiles[0];
+        assert_eq!(profile.name, "旧方案");
+        assert_eq!(profile.points.len(), 2);
+        assert_eq!(profile.points[0].x, 121);
+        assert_eq!(profile.points[0].y, -42);
+        assert_eq!(profile.points[0].delay_seconds, 3600.0);
+        assert_eq!(profile.points[1].key, "Esc");
+        assert_eq!(
+            profile.points[1].modifiers,
+            vec![KeyModifier::Control, KeyModifier::Shift]
+        );
+        assert_eq!(profile.settings.click_interval_seconds, 0.1);
+        assert_eq!(profile.settings.loop_interval_seconds, 0.0);
+        assert_eq!(profile.settings.start_delay_seconds, 60.0);
+        assert_eq!(profile.settings.loop_count, 9999);
+        assert_eq!(profile.settings.hotkeys.capture, "CommandOrControl+Alt+Q");
+    }
+
+    #[test]
+    fn invalid_store_falls_back_to_default_profile() {
+        let store = sanitize_persisted(&json!({ "profiles": [null, 42] }));
+        assert_eq!(store.profiles.len(), 1);
+        assert_eq!(store.profiles[0].name, DEFAULT_PROFILE_NAME);
+        assert_eq!(store.active_profile_id, store.profiles[0].id);
+        assert_eq!(store.profiles[0].settings, default_settings());
+    }
+
+    #[test]
+    fn hotkey_conflicts_and_reserved_shortcut_are_detected() {
+        let duplicate = Hotkeys {
+            capture: "CommandOrControl+Alt+Q".into(),
+            start: "CommandOrControl+Alt+Q".into(),
+            stop: EMERGENCY_STOP_HOTKEY.into(),
+        };
+        let errors = validate_hotkeys(&duplicate);
+        assert_eq!(errors.len(), 2);
+        assert!(errors.iter().any(|error| error.contains("热键重复")));
+        assert!(errors.iter().any(|error| error.contains("紧急停止")));
+
+        assert!(key_step_conflicts_with_hotkey(
+            "Q",
+            &[KeyModifier::Control, KeyModifier::Alt],
+            &default_settings().hotkeys
+        ));
+    }
+
+    #[test]
+    fn virtual_key_mapping_matches_supported_keys() {
+        assert_eq!(virtual_key_code("A"), Some(0x41));
+        assert_eq!(virtual_key_code("9"), Some(0x39));
+        assert_eq!(virtual_key_code("F24"), Some(0x87));
+        assert_eq!(virtual_key_code("ArrowLeft"), Some(0x25));
+        assert_eq!(virtual_key_code("F25"), None);
+        assert_eq!(virtual_key_code("a"), None);
+    }
+}
