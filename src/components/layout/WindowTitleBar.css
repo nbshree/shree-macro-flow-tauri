@@ -1,0 +1,172 @@
+.window-title-bar {
+  --window-title-bar-background: var(--surface-panel-strong);
+  --window-title-bar-border: var(--border-default);
+  --window-title-bar-text: var(--text-primary);
+  --window-title-bar-hover: var(--surface-muted);
+  --window-title-bar-active: var(--surface-hover);
+  --window-title-bar-focus: var(--color-primary);
+  position: relative;
+  z-index: 1000;
+  display: flex;
+  width: 100%;
+  height: 40px;
+  min-height: 40px;
+  color: var(--window-title-bar-text);
+  background: var(--window-title-bar-background);
+  border-bottom: 1px solid var(--window-title-bar-border);
+  user-select: none;
+}
+
+.window-title-bar__drag-region {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  padding: 0 12px;
+  cursor: default;
+}
+
+.window-title-bar__app-icon {
+  flex: none;
+  margin-right: 8px;
+  color: var(--color-primary);
+  stroke-width: 1.8;
+}
+
+.window-title-bar__title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window-title-bar__controls {
+  display: flex;
+  flex: none;
+  height: 100%;
+}
+
+.window-title-bar__control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 40px;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+}
+
+.window-title-bar__control:hover {
+  background: var(--window-title-bar-hover);
+}
+
+.window-title-bar__control:active {
+  background: var(--window-title-bar-active);
+}
+
+.window-title-bar__control:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--window-title-bar-focus);
+  outline-offset: -3px;
+}
+
+.window-title-bar__control--close:hover,
+.window-title-bar__control--close:active {
+  color: var(--text-on-primary);
+  background: var(--color-danger);
+}
+
+.window-title-bar__control svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  stroke-width: 1.35;
+}
+
+.window-resize-handle {
+  position: fixed;
+  z-index: 1100;
+}
+
+.window-resize-handle--north,
+.window-resize-handle--south {
+  right: 8px;
+  left: 8px;
+  height: 5px;
+  cursor: ns-resize;
+}
+
+.window-resize-handle--east,
+.window-resize-handle--west {
+  top: 8px;
+  bottom: 8px;
+  width: 5px;
+  cursor: ew-resize;
+}
+
+.window-resize-handle--north {
+  top: 0;
+}
+
+.window-resize-handle--east {
+  right: 0;
+}
+
+.window-resize-handle--south {
+  bottom: 0;
+}
+
+.window-resize-handle--west {
+  left: 0;
+}
+
+.window-resize-handle--northeast,
+.window-resize-handle--northwest,
+.window-resize-handle--southeast,
+.window-resize-handle--southwest {
+  width: 8px;
+  height: 8px;
+}
+
+.window-resize-handle--northeast {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.window-resize-handle--northwest {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.window-resize-handle--southeast {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+.window-resize-handle--southwest {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .window-title-bar__control {
+    transition: none;
+  }
+}

@@ -7,7 +7,9 @@ use chrono::Local;
 use tauri::{AppHandle, Emitter};
 
 use crate::{
-    model::{MacroState, PersistedData, profile_summaries, state_from_store},
+    model::{
+        AppearancePreferences, MacroState, PersistedData, profile_summaries, state_from_store,
+    },
     store,
 };
 
@@ -139,5 +141,53 @@ pub fn apply_active_profile(inner: &mut RuntimeData) {
     inner.state.active_profile_id = active.id.clone();
     inner.state.points = active.points.clone();
     inner.state.settings = active.settings.clone();
+    inner.state.appearance = inner.store.appearance.clone();
     inner.state.profiles = profile_summaries(&inner.store);
+}
+
+pub fn apply_appearance(inner: &mut RuntimeData, appearance: AppearancePreferences) {
+    inner.store.appearance = appearance.clone();
+    inner.state.appearance = appearance;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{AppearancePreferences, create_default_profile_store, state_from_store};
+
+    #[test]
+    fn applying_appearance_does_not_touch_profile_or_runtime_state() {
+        let mut store = create_default_profile_store();
+        store.profiles[0].updated_at = 1234;
+        let mut state = state_from_store(&mut store);
+        state.is_running = true;
+        state.is_recording = true;
+        state.logs.push("existing log".into());
+        let mut runtime = RuntimeData {
+            state,
+            store,
+            run_token: 42,
+            is_capturing_key: true,
+            is_quitting: false,
+            profile_file: PathBuf::from("unused.json"),
+        };
+
+        apply_appearance(
+            &mut runtime,
+            AppearancePreferences {
+                theme_id: "default".into(),
+                clean_mode: true,
+            },
+        );
+
+        assert_eq!(runtime.store.profiles[0].updated_at, 1234);
+        assert_eq!(runtime.state.appearance, runtime.store.appearance);
+        assert_eq!(runtime.state.appearance.theme_id, "default");
+        assert!(runtime.state.appearance.clean_mode);
+        assert!(runtime.state.is_running);
+        assert!(runtime.state.is_recording);
+        assert_eq!(runtime.state.logs, ["existing log"]);
+        assert_eq!(runtime.run_token, 42);
+        assert!(runtime.is_capturing_key);
+    }
 }

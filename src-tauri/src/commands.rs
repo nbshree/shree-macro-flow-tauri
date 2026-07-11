@@ -9,20 +9,40 @@ use tauri_plugin_dialog::DialogExt;
 use crate::{
     input,
     model::{
-        Hotkeys, KeyModifier, LoopMode, MacroProfile, MacroState, Point, PointAction, PointPatch,
-        SettingsPatch, clamp_f64, create_id, default_settings, format_key_step,
-        key_step_conflicts_with_hotkey, normalize_hotkey, normalize_key, now_millis,
-        sanitize_modifier_list, sanitize_profile, sanitize_profile_name, truncate_chars,
-        validate_hotkeys, virtual_key_code,
+        AppearancePatch, Hotkeys, KeyModifier, LoopMode, MacroProfile, MacroState, Point,
+        PointAction, PointPatch, SettingsPatch, clamp_f64, create_id, default_settings,
+        format_key_step, key_step_conflicts_with_hotkey, normalize_hotkey, normalize_key,
+        now_millis, patch_appearance, sanitize_modifier_list, sanitize_profile,
+        sanitize_profile_name, truncate_chars, validate_hotkeys, virtual_key_code,
     },
     shortcuts,
-    state::{AppState, apply_active_profile, can_edit_flow, emit_state},
+    state::{AppState, apply_active_profile, apply_appearance, can_edit_flow, emit_state},
     store,
 };
 
 #[tauri::command]
 pub fn get_state(state: State<'_, AppState>) -> MacroState {
     state.snapshot()
+}
+
+#[tauri::command]
+pub fn update_appearance(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    appearance: AppearancePatch,
+) -> Result<MacroState, String> {
+    let snapshot = {
+        let mut inner = state.lock();
+        let next = patch_appearance(&inner.store.appearance, &appearance);
+        let mut store_snapshot = inner.store.clone();
+        store_snapshot.appearance = next.clone();
+
+        store::save_profiles(&inner.profile_file, &store_snapshot)?;
+        apply_appearance(&mut inner, next);
+        inner.state.clone()
+    };
+    emit_state(&app, &snapshot);
+    Ok(snapshot)
 }
 
 #[tauri::command]

@@ -6,6 +6,7 @@ use serde_json::{Map, Value};
 
 pub const EMERGENCY_STOP_HOTKEY: &str = "CommandOrControl+Alt+Esc";
 pub const DEFAULT_PROFILE_NAME: &str = "默认方案";
+pub const DEFAULT_THEME_ID: &str = "longyin";
 pub const PROFILE_FILE_NAME: &str = "macro-profiles.json";
 
 static ID_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -101,11 +102,27 @@ pub struct ProfileSummary {
     pub updated_at: i64,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearancePreferences {
+    pub theme_id: String,
+    pub clean_mode: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearancePatch {
+    pub theme_id: Option<String>,
+    pub clean_mode: Option<bool>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PersistedData {
     pub active_profile_id: String,
     pub profiles: Vec<MacroProfile>,
+    #[serde(default = "default_appearance")]
+    pub appearance: AppearancePreferences,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -113,6 +130,7 @@ pub struct PersistedData {
 pub struct MacroState {
     pub points: Vec<Point>,
     pub settings: Settings,
+    pub appearance: AppearancePreferences,
     pub active_profile_id: String,
     pub profiles: Vec<ProfileSummary>,
     pub is_recording: bool,
@@ -178,6 +196,13 @@ pub fn default_settings() -> Settings {
     }
 }
 
+pub fn default_appearance() -> AppearancePreferences {
+    AppearancePreferences {
+        theme_id: DEFAULT_THEME_ID.into(),
+        clean_mode: false,
+    }
+}
+
 pub fn create_default_profile_store() -> PersistedData {
     let now = now_millis();
     let profile = MacroProfile {
@@ -192,6 +217,7 @@ pub fn create_default_profile_store() -> PersistedData {
     PersistedData {
         active_profile_id: profile.id.clone(),
         profiles: vec![profile],
+        appearance: default_appearance(),
     }
 }
 
@@ -211,6 +237,7 @@ pub fn state_from_store(store: &mut PersistedData) -> MacroState {
     MacroState {
         points: active.points.clone(),
         settings: active.settings.clone(),
+        appearance: store.appearance.clone(),
         active_profile_id: active.id.clone(),
         profiles: profile_summaries(store),
         is_recording: false,
@@ -254,8 +281,12 @@ pub fn sanitize_persisted(value: &Value) -> PersistedData {
         })
         .unwrap_or_default();
 
+    let appearance = sanitize_appearance(object.get("appearance"));
+
     if profiles.is_empty() {
-        return create_default_profile_store();
+        let mut store = create_default_profile_store();
+        store.appearance = appearance;
+        return store;
     }
 
     let requested_active = object
@@ -272,6 +303,44 @@ pub fn sanitize_persisted(value: &Value) -> PersistedData {
     PersistedData {
         active_profile_id,
         profiles,
+        appearance,
+    }
+}
+
+pub fn sanitize_appearance(value: Option<&Value>) -> AppearancePreferences {
+    let object = value.and_then(Value::as_object);
+    AppearancePreferences {
+        theme_id: sanitize_theme_id(
+            object
+                .and_then(|appearance| appearance.get("themeId"))
+                .and_then(Value::as_str),
+        ),
+        clean_mode: object
+            .and_then(|appearance| appearance.get("cleanMode"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    }
+}
+
+pub fn patch_appearance(
+    current: &AppearancePreferences,
+    patch: &AppearancePatch,
+) -> AppearancePreferences {
+    AppearancePreferences {
+        theme_id: patch
+            .theme_id
+            .as_deref()
+            .map(|theme_id| sanitize_theme_id(Some(theme_id)))
+            .unwrap_or_else(|| sanitize_theme_id(Some(&current.theme_id))),
+        clean_mode: patch.clean_mode.unwrap_or(current.clean_mode),
+    }
+}
+
+pub fn sanitize_theme_id(value: Option<&str>) -> String {
+    match value.map(str::trim) {
+        Some("default") => "default".into(),
+        Some("longyin") => "longyin".into(),
+        _ => DEFAULT_THEME_ID.into(),
     }
 }
 
@@ -672,6 +741,7 @@ mod tests {
         assert_eq!(profile.settings.start_delay_seconds, 60.0);
         assert_eq!(profile.settings.loop_count, 9999);
         assert_eq!(profile.settings.hotkeys.capture, "CommandOrControl+Alt+Q");
+        assert_eq!(store.appearance, default_appearance());
     }
 
     #[test]
@@ -681,6 +751,47 @@ mod tests {
         assert_eq!(store.profiles[0].name, DEFAULT_PROFILE_NAME);
         assert_eq!(store.active_profile_id, store.profiles[0].id);
         assert_eq!(store.profiles[0].settings, default_settings());
+        assert_eq!(store.appearance, default_appearance());
+    }
+
+    #[test]
+    fn appearance_is_loaded_and_unknown_themes_fall_back_to_longyin() {
+        let valid = sanitize_persisted(&json!({
+            "profiles": [{ "id": "profile", "name": "方案" }],
+            "appearance": { "themeId": " default ", "cleanMode": true }
+        }));
+        assert_eq!(valid.appearance.theme_id, "default");
+        assert!(valid.appearance.clean_mode);
+
+        let unknown = sanitize_persisted(&json!({
+            "profiles": [{ "id": "profile", "name": "方案" }],
+            "appearance": { "themeId": "future-theme", "cleanMode": true }
+        }));
+        assert_eq!(unknown.appearance.theme_id, DEFAULT_THEME_ID);
+        assert!(unknown.appearance.clean_mode);
+
+        let patched = patch_appearance(
+            &unknown.appearance,
+            &AppearancePatch {
+                theme_id: Some(String::new()),
+                clean_mode: None,
+            },
+        );
+        assert_eq!(patched.theme_id, DEFAULT_THEME_ID);
+        assert!(patched.clean_mode);
+    }
+
+    #[test]
+    fn profile_serialization_and_import_ignore_global_appearance() {
+        let store = create_default_profile_store();
+        let exported = serde_json::to_value(&store.profiles[0]).expect("serialize profile");
+        assert!(exported.get("appearance").is_none());
+
+        let mut value = exported;
+        value["appearance"] = json!({ "themeId": "default", "cleanMode": true });
+        let imported = sanitize_profile(&value, "导入方案").expect("sanitize profile");
+        let reexported = serde_json::to_value(imported).expect("serialize imported profile");
+        assert!(reexported.get("appearance").is_none());
     }
 
     #[test]
