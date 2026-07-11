@@ -15,10 +15,14 @@ describe('theme registry', () => {
     expect(themes.map((theme) => theme.id)).toEqual(THEME_IDS)
     expect(Object.keys(themeRegistry)).toEqual(THEME_IDS)
     expect(themeRegistry.default.name).toBe('默认简洁')
+    expect(themeRegistry.longyin.name).toBe('龙吟')
     expect(themeRegistry.longyin.profession).toBe('龙吟')
+    expect(themeRegistry.chaoguang.name).toBe('潮光')
+    expect(themeRegistry.chaoguang.profession).toBe('潮光')
+    expect(themeRegistry.chaoguang.preview).toContain('preview.webp')
   })
 
-  it.each(['longyin', 'default'] as const)('recognizes the supported theme "%s"', (themeId) => {
+  it.each(THEME_IDS)('recognizes the supported theme "%s"', (themeId) => {
     expect(isThemeId(themeId)).toBe(true)
     expect(getThemeDefinition(themeId)).toBe(themeRegistry[themeId])
   })
@@ -40,6 +44,10 @@ describe('theme registry', () => {
     expect(normalizeAppearance({ themeId: 'default', cleanMode: null })).toEqual({
       themeId: 'default',
       cleanMode: false
+    })
+    expect(normalizeAppearance({ themeId: 'chaoguang', cleanMode: true })).toEqual({
+      themeId: 'chaoguang',
+      cleanMode: true
     })
   })
 })

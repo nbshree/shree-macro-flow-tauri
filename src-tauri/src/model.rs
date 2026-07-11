@@ -340,6 +340,7 @@ pub fn sanitize_theme_id(value: Option<&str>) -> String {
     match value.map(str::trim) {
         Some("default") => "default".into(),
         Some("longyin") => "longyin".into(),
+        Some("chaoguang") => "chaoguang".into(),
         _ => DEFAULT_THEME_ID.into(),
     }
 }
@@ -763,12 +764,39 @@ mod tests {
         assert_eq!(valid.appearance.theme_id, "default");
         assert!(valid.appearance.clean_mode);
 
+        let chaoguang = sanitize_persisted(&json!({
+            "profiles": [{ "id": "profile", "name": "方案" }],
+            "appearance": { "themeId": " chaoguang ", "cleanMode": false }
+        }));
+        assert_eq!(chaoguang.appearance.theme_id, "chaoguang");
+        assert!(!chaoguang.appearance.clean_mode);
+
         let unknown = sanitize_persisted(&json!({
             "profiles": [{ "id": "profile", "name": "方案" }],
             "appearance": { "themeId": "future-theme", "cleanMode": true }
         }));
         assert_eq!(unknown.appearance.theme_id, DEFAULT_THEME_ID);
         assert!(unknown.appearance.clean_mode);
+
+        let chaoguang_patch = patch_appearance(
+            &valid.appearance,
+            &AppearancePatch {
+                theme_id: Some(" chaoguang ".into()),
+                clean_mode: None,
+            },
+        );
+        assert_eq!(chaoguang_patch.theme_id, "chaoguang");
+        assert!(chaoguang_patch.clean_mode);
+
+        let clean_mode_patch = patch_appearance(
+            &chaoguang_patch,
+            &AppearancePatch {
+                theme_id: None,
+                clean_mode: Some(false),
+            },
+        );
+        assert_eq!(clean_mode_patch.theme_id, "chaoguang");
+        assert!(!clean_mode_patch.clean_mode);
 
         let patched = patch_appearance(
             &unknown.appearance,

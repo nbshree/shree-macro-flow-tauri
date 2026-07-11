@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useRef, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -60,6 +60,12 @@ function getThemeRadio(name: RegExp) {
   return screen.getByRole('radio', { name })
 }
 
+function getThemeCard(name: RegExp): HTMLElement {
+  const card = getThemeRadio(name).parentElement
+  if (!card) throw new Error('主题单选项缺少卡片容器')
+  return card
+}
+
 describe('ThemeDialog', () => {
   it('previews theme and clean mode changes immediately without persisting them', async () => {
     const user = userEvent.setup()
@@ -80,7 +86,7 @@ describe('ThemeDialog', () => {
     const user = userEvent.setup()
     render(<DialogHarness />)
 
-    await user.click(getThemeRadio(/默认简洁/))
+    await user.click(getThemeRadio(/潮光/))
     await user.click(screen.getByRole('button', { name: '取消' }))
 
     expect(screen.getByTestId('dialog-open')).toHaveTextContent('false')
@@ -93,7 +99,7 @@ describe('ThemeDialog', () => {
     const user = userEvent.setup()
     render(<DialogHarness />)
 
-    await user.click(getThemeRadio(/默认简洁/))
+    await user.click(getThemeRadio(/潮光/))
     await user.keyboard('{Escape}')
 
     expect(screen.getByTestId('dialog-open')).toHaveTextContent('false')
@@ -107,16 +113,16 @@ describe('ThemeDialog', () => {
     const onApply = vi.fn().mockResolvedValue(undefined)
     render(<DialogHarness onApply={onApply} />)
 
-    await user.click(getThemeRadio(/默认简洁/))
+    await user.click(getThemeRadio(/潮光/))
     await user.click(screen.getByRole('switch', { name: /纯净模式/ }))
     await user.click(screen.getByRole('button', { name: /应用主题/ }))
 
     await waitFor(() => {
-      expect(onApply).toHaveBeenCalledWith({ themeId: 'default', cleanMode: true })
+      expect(onApply).toHaveBeenCalledWith({ themeId: 'chaoguang', cleanMode: true })
       expect(screen.getByTestId('dialog-open')).toHaveTextContent('false')
     })
-    expect(screen.getByTestId('persisted-theme')).toHaveTextContent('default')
-    expect(screen.getByTestId('active-theme')).toHaveTextContent('default')
+    expect(screen.getByTestId('persisted-theme')).toHaveTextContent('chaoguang')
+    expect(screen.getByTestId('active-theme')).toHaveTextContent('chaoguang')
     expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('true')
     expect(screen.getByTestId('preview-theme')).toHaveTextContent('none')
   })
@@ -135,26 +141,65 @@ describe('ThemeDialog', () => {
     expect(screen.getByTestId('active-theme')).toHaveTextContent('longyin')
     expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('false')
     expect(screen.getByTestId('preview-theme')).toHaveTextContent('none')
-    expect(getThemeRadio(/龙吟·霜刃/)).toBeChecked()
+    expect(getThemeRadio(/龙吟/)).toBeChecked()
     expect(screen.getByRole('switch', { name: /纯净模式/ })).not.toBeChecked()
   })
 
-  it('supports selecting native form controls from the keyboard', async () => {
+  it('supports previewing all three themes from the keyboard', async () => {
     const user = userEvent.setup()
     render(<DialogHarness />)
 
     const defaultTheme = getThemeRadio(/默认简洁/)
+    const longyinTheme = getThemeRadio(/龙吟/)
+    const chaoguangTheme = getThemeRadio(/潮光/)
+
     defaultTheme.focus()
     await user.keyboard(' ')
+    expect(defaultTheme).toBeChecked()
+    expect(screen.getByTestId('active-theme')).toHaveTextContent('default')
+
+    await user.keyboard('{ArrowRight}')
+    expect(longyinTheme).toHaveFocus()
+    await user.keyboard(' ')
+    expect(longyinTheme).toBeChecked()
+    expect(screen.getByTestId('active-theme')).toHaveTextContent('longyin')
+
+    await user.keyboard('{ArrowRight}')
+    expect(chaoguangTheme).toHaveFocus()
+    await user.keyboard(' ')
+    expect(chaoguangTheme).toBeChecked()
+    expect(screen.getByTestId('active-theme')).toHaveTextContent('chaoguang')
+  })
+
+  it('supports toggling clean mode from the keyboard', async () => {
+    const user = userEvent.setup()
+    render(<DialogHarness />)
 
     const cleanMode = screen.getByRole('switch', { name: /纯净模式/ })
     cleanMode.focus()
     await user.keyboard(' ')
 
-    expect(defaultTheme).toBeChecked()
     expect(cleanMode).toBeChecked()
-    expect(screen.getByTestId('active-theme')).toHaveTextContent('default')
     expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('true')
+  })
+
+  it('renders three theme cards and omits profession badges that duplicate their names', () => {
+    render(<DialogHarness />)
+
+    expect(screen.queryByText('内置主题')).not.toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: '选择主题' })).toBeInTheDocument()
+    expect(getThemeRadio(/默认简洁/)).toBeInTheDocument()
+    expect(getThemeRadio(/龙吟/)).toBeInTheDocument()
+    expect(getThemeRadio(/潮光/)).toBeInTheDocument()
+    expect(screen.getByAltText('龙吟主题预览')).toBeInTheDocument()
+    expect(screen.getByAltText('潮光主题预览')).toBeInTheDocument()
+
+    const longyinCard = getThemeCard(/龙吟/)
+    const chaoguangCard = getThemeCard(/潮光/)
+    expect(within(longyinCard).getAllByText('龙吟')).toHaveLength(1)
+    expect(within(chaoguangCard).getAllByText('潮光')).toHaveLength(1)
+    expect(longyinCard.querySelector('small')).toBeNull()
+    expect(chaoguangCard.querySelector('small')).toBeNull()
   })
 
   it('renders through a portal and focuses the selected theme when opened', async () => {
@@ -162,7 +207,7 @@ describe('ThemeDialog', () => {
 
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    await waitFor(() => expect(getThemeRadio(/龙吟·霜刃/)).toHaveFocus())
+    await waitFor(() => expect(getThemeRadio(/龙吟/)).toHaveFocus())
   })
 
   it('prevents duplicate submission and Escape dismissal while saving', async () => {
@@ -196,7 +241,7 @@ describe('ThemeDialog', () => {
     const user = userEvent.setup()
     render(<DialogHarness />)
 
-    fireEvent.error(screen.getByAltText(/龙吟·霜刃主题预览/))
+    fireEvent.error(screen.getByAltText(/潮光主题预览/))
     await user.click(getThemeRadio(/默认简洁/))
 
     expect(getThemeRadio(/默认简洁/)).toBeChecked()

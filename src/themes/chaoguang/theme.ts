@@ -1,6 +1,6 @@
 import type { ThemeDefinition } from '../types'
 
-export const longyinThemeAssetPaths = {
+export const chaoguangThemeAssetPaths = {
   background: './assets/background.webp',
   character: './assets/character.webp',
   preview: './assets/preview.webp',
@@ -9,11 +9,11 @@ export const longyinThemeAssetPaths = {
   cornerBottomLeft: './assets/corner-bottom-left.svg'
 } as const
 
-export const longyinTheme: ThemeDefinition = {
-  id: 'longyin',
-  name: '龙吟',
-  profession: '龙吟',
-  description: '宣纸灰蓝、墨色山水与冷峻霜刃构成的沉浸式武侠主题。',
+export const chaoguangTheme: ThemeDefinition = {
+  id: 'chaoguang',
+  name: '潮光',
+  profession: '潮光',
+  description: '月白、雾霭蓝与鸢尾虹彩交织的轻盈海境主题。',
   preview: new URL('./assets/preview.webp', import.meta.url).href,
   assets: {
     background: new URL('./assets/background.webp', import.meta.url).href,

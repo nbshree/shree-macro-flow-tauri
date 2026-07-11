@@ -12,6 +12,19 @@
 - 主题素材只负责氛围，不得包含按钮、表格、应用标题、状态、热键或其他功能文字。
 - 主题层不得获得文件系统、Shell、网络或其他 Tauri 权限。
 
+### 1.1 当前内置主题
+
+主题卡片顺序由 `THEME_IDS` 决定。当前内置主题如下，默认值仍固定为 `longyin`：
+
+| 顺序 | ID          | 展示名称 | `profession` | 说明                 |
+| ---: | ----------- | -------- | ------------ | -------------------- |
+|    1 | `default`   | 默认简洁 | 省略         | 无职业素材的基础主题 |
+|    2 | `longyin`   | 龙吟     | 龙吟         | 灰蓝墨色武侠主题     |
+|    3 | `chaoguang` | 潮光     | 潮光         | 青白水光武侠主题     |
+
+职业主题的 `name` 使用职业名本身，不添加“·意象”等自造后缀。`profession` 可以与
+`name` 相同；主题选择器会在两者相同时隐藏职业徽标，避免出现“潮光 / 潮光”一类重复文案。
+
 主题数据流固定为：
 
 ```text
@@ -51,7 +64,7 @@ src/themes/
 - 除 `preview` 外，所有素材字段均可省略；没有合格素材时应省略该层，不得用低质量占位图发布。
 - `ThemeDefinition.preview` 当前是必填字符串。职业主题必须提供正式预览图；无素材的基础主题可以使用空字符串触发现有图标回退。
 - 主题专属 CSS 只允许定义 Token、装饰层位置和主题选择卡片的无图回退色，不得覆盖业务组件内部结构。
-- 当前 `default` 和 `longyin` 的 Token 位于 `src/themes/themes.css`。新主题推荐创建独立 `theme.css`，并在中央样式文件顶部导入；不要把职业规则散落到 `src/assets/main.css`。
+- 当前 `default` 和 `longyin` 的 Token 位于 `src/themes/themes.css`，`chaoguang` 使用独立的 `src/themes/chaoguang/theme.css` 并在中央样式文件顶部导入。后续主题沿用独立文件方式；不要把职业规则散落到 `src/assets/main.css`。
 
 ## 3. ThemeDefinition 约定
 
@@ -79,8 +92,8 @@ type ThemeDefinition = {
 | 字段          | 规范                                                                    |
 | ------------- | ----------------------------------------------------------------------- |
 | `id`          | 与目录名、`THEME_IDS`、注册表键和 Rust 白名单完全一致；发布后保持稳定。 |
-| `name`        | 选择器中展示的短名称。职业主题推荐“职业·意象”，例如“龙吟·霜刃”。        |
-| `profession`  | 职业名，用于主题卡片标签；基础主题可省略。                              |
+| `name`        | 选择器中展示的短名称。职业主题直接使用职业名，例如“龙吟”“潮光”。        |
+| `profession`  | 结构化职业名；基础主题可省略。与 `name` 相同时选择器不重复显示徽标。    |
 | `description` | 一句话描述色彩与氛围，不描述不存在的功能，建议不超过 40 个中文字符。    |
 | `preview`     | 480×300 WebP 的 Vite 资源 URL，不得直接写运行时绝对路径。               |
 | `assets`      | 只声明实际存在的分层素材；每个字段独立加载和独立降级。                  |
@@ -101,7 +114,7 @@ export const suimengThemeAssetPaths = {
 
 export const suimengTheme: ThemeDefinition = {
   id: 'suimeng',
-  name: '碎梦·夜刃',
+  name: '碎梦',
   profession: '碎梦',
   description: '用一句话说明主题的主色、材质和视觉气质。',
   preview: new URL('./assets/preview.webp', import.meta.url).href,
@@ -211,7 +224,7 @@ export const suimengTheme: ThemeDefinition = {
 | `background.webp`        | 1920×1280 WebP | 500 KB | 否    | 环境、山水、光影等全窗底图 |
 | `character.webp`         | 1200×1280 WebP | 1.2 MB | 是    | 右下角角色独立层           |
 | `preview.webp`           | 480×300 WebP   | 120 KB | 否    | 16:10 主题卡片预览         |
-| `paper-noise.webp`       | 512×512 WebP   | 100 KB | 否    | 可无缝平铺的低对比纹理     |
+| `paper-noise.webp`       | 512×512 WebP   | 100 KB | 否    | 全窗拉伸使用的低对比纹理   |
 | `corner-top-right.svg`   | SVG            |  30 KB | 是    | 右上边角装饰               |
 | `corner-bottom-left.svg` | SVG            |  30 KB | 是    | 左下边角装饰               |
 
@@ -246,7 +259,8 @@ export const suimengTheme: ThemeDefinition = {
 
 ### 7.3 纹理与边角
 
-- `paper-noise.webp` 必须四边无缝，整体对比度低；以 `multiply` 和低透明度使用时不能造成正文脏污或闪烁。
+- `paper-noise.webp` 当前由 `ThemeBackground` 作为全窗 `<img>` 渲染，使用 `width/height: 100%` 与 `object-fit: cover` 拉伸和裁切，并不是 CSS 平铺纹理。制作时应在横向、纵向拉伸及不同窗口比例下检查颗粒尺度、亮斑和边缘，不能只验证四边无缝。
+- 纹理混合模式可以由主题样式指定；默认主题体系使用 `multiply`，潮光使用 `soft-light`。无论使用哪种模式，低透明度下都不能造成正文脏污、色偏或闪烁。
 - 边角 SVG 的主要线条保持在各自 `viewBox` 内；贴边部分允许自然裁切，中心方向留出渐隐空间。
 - 不依靠边角素材遮盖背景或角色的接缝。
 

@@ -184,10 +184,9 @@ export function ThemeDialog({
             </Button>
           </header>
 
-          <fieldset className="theme-dialog__fieldset" disabled={isSaving}>
-            <legend className="theme-dialog__legend">内置主题</legend>
+          <div className="theme-dialog__fieldset">
             <RadioGroup
-              aria-label="内置主题"
+              aria-label="选择主题"
               className="theme-dialog__grid"
               disabled={isSaving}
               value={draft.themeId}
@@ -238,7 +237,9 @@ export function ThemeDialog({
                       <span className="theme-card__copy">
                         <span className="theme-card__title-row">
                           <strong>{theme.name}</strong>
-                          {theme.profession ? <small>{theme.profession}</small> : null}
+                          {theme.profession && theme.profession !== theme.name ? (
+                            <small>{theme.profession}</small>
+                          ) : null}
                         </span>
                         <span>{theme.description}</span>
                       </span>
@@ -247,7 +248,7 @@ export function ThemeDialog({
                 )
               })}
             </RadioGroup>
-          </fieldset>
+          </div>
 
           <label className="theme-clean-mode" htmlFor={cleanModeId}>
             <Switch
