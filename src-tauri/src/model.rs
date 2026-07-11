@@ -341,6 +341,7 @@ pub fn sanitize_theme_id(value: Option<&str>) -> String {
         Some("default") => "default".into(),
         Some("longyin") => "longyin".into(),
         Some("chaoguang") => "chaoguang".into(),
+        Some("xuehe") => "xuehe".into(),
         _ => DEFAULT_THEME_ID.into(),
     }
 }
@@ -771,6 +772,13 @@ mod tests {
         assert_eq!(chaoguang.appearance.theme_id, "chaoguang");
         assert!(!chaoguang.appearance.clean_mode);
 
+        let xuehe = sanitize_persisted(&json!({
+            "profiles": [{ "id": "profile", "name": "方案" }],
+            "appearance": { "themeId": " xuehe ", "cleanMode": false }
+        }));
+        assert_eq!(xuehe.appearance.theme_id, "xuehe");
+        assert!(!xuehe.appearance.clean_mode);
+
         let unknown = sanitize_persisted(&json!({
             "profiles": [{ "id": "profile", "name": "方案" }],
             "appearance": { "themeId": "future-theme", "cleanMode": true }
@@ -778,24 +786,24 @@ mod tests {
         assert_eq!(unknown.appearance.theme_id, DEFAULT_THEME_ID);
         assert!(unknown.appearance.clean_mode);
 
-        let chaoguang_patch = patch_appearance(
+        let xuehe_patch = patch_appearance(
             &valid.appearance,
             &AppearancePatch {
-                theme_id: Some(" chaoguang ".into()),
+                theme_id: Some(" xuehe ".into()),
                 clean_mode: None,
             },
         );
-        assert_eq!(chaoguang_patch.theme_id, "chaoguang");
-        assert!(chaoguang_patch.clean_mode);
+        assert_eq!(xuehe_patch.theme_id, "xuehe");
+        assert!(xuehe_patch.clean_mode);
 
         let clean_mode_patch = patch_appearance(
-            &chaoguang_patch,
+            &xuehe_patch,
             &AppearancePatch {
                 theme_id: None,
                 clean_mode: Some(false),
             },
         );
-        assert_eq!(clean_mode_patch.theme_id, "chaoguang");
+        assert_eq!(clean_mode_patch.theme_id, "xuehe");
         assert!(!clean_mode_patch.clean_mode);
 
         let patched = patch_appearance(
@@ -807,6 +815,8 @@ mod tests {
         );
         assert_eq!(patched.theme_id, DEFAULT_THEME_ID);
         assert!(patched.clean_mode);
+
+        assert_eq!(sanitize_theme_id(Some("   ")), DEFAULT_THEME_ID);
     }
 
     #[test]

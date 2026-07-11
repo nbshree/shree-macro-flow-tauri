@@ -27,7 +27,8 @@ function renderHeader(themeId: ThemeId, onOpenTheme = vi.fn()) {
 describe('WorkspaceHeader', () => {
   it.each([
     ['longyin', '主题：龙吟'],
-    ['chaoguang', '主题：潮光']
+    ['chaoguang', '主题：潮光'],
+    ['xuehe', '主题：血河']
   ] as const)('shows the registered theme name for %s', (themeId, label) => {
     renderHeader(themeId)
 

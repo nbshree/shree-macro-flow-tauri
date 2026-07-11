@@ -2,12 +2,12 @@ import { fireEvent, render, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { ThemeProvider, type AppearancePreferences, type ThemeAssetKey } from '../../themes'
-import { chaoguangTheme } from '../../themes/chaoguang/theme'
 import { longyinTheme } from '../../themes/longyin/theme'
+import { xueheTheme } from '../../themes/xuehe/theme'
 import { ThemeBackground } from './ThemeBackground'
 
-const CHAOGUANG_APPEARANCE: AppearancePreferences = {
-  themeId: 'chaoguang',
+const XUEHE_APPEARANCE: AppearancePreferences = {
+  themeId: 'xuehe',
   cleanMode: false
 }
 
@@ -45,26 +45,26 @@ function getAssetLayer(container: HTMLElement, asset: BackgroundAssetKey): HTMLI
 }
 
 describe('ThemeBackground with ThemeProvider', () => {
-  it('applies chaoguang appearance to the document and renders all five declared layers', () => {
-    const { container } = render(<BackgroundHarness appearance={CHAOGUANG_APPEARANCE} />)
+  it('applies xuehe appearance to the document and renders all five declared layers', () => {
+    const { container } = render(<BackgroundHarness appearance={XUEHE_APPEARANCE} />)
     const background = getBackgroundContainer(container)
 
-    expect(document.documentElement).toHaveAttribute('data-theme', 'chaoguang')
+    expect(document.documentElement).toHaveAttribute('data-theme', 'xuehe')
     expect(document.documentElement).toHaveAttribute('data-clean-mode', 'false')
-    expect(background).toHaveAttribute('data-theme-id', 'chaoguang')
+    expect(background).toHaveAttribute('data-theme-id', 'xuehe')
     expect(background).toHaveAttribute('data-clean-mode', 'false')
 
     for (const asset of THEME_ASSET_KEYS) {
-      expect(getAssetLayer(container, asset)).toHaveAttribute('src', chaoguangTheme.assets[asset]!)
+      expect(getAssetLayer(container, asset)).toHaveAttribute('src', xueheTheme.assets[asset]!)
     }
   })
 
   it('removes only the failed image layer and preserves every other layer', async () => {
     const onAssetError = vi.fn()
     const { container } = render(
-      <BackgroundHarness appearance={CHAOGUANG_APPEARANCE} onAssetError={onAssetError} />
+      <BackgroundHarness appearance={XUEHE_APPEARANCE} onAssetError={onAssetError} />
     )
-    const failedSource = chaoguangTheme.assets.texture!
+    const failedSource = xueheTheme.assets.texture!
     const texture = getAssetLayer(container, 'texture')
 
     expect(texture).not.toBeNull()
@@ -78,7 +78,7 @@ describe('ThemeBackground with ThemeProvider', () => {
   })
 
   it('resets failed layer state after switching themes', async () => {
-    const { container, rerender } = render(<BackgroundHarness appearance={CHAOGUANG_APPEARANCE} />)
+    const { container, rerender } = render(<BackgroundHarness appearance={XUEHE_APPEARANCE} />)
     fireEvent.error(getAssetLayer(container, 'character')!)
     await waitFor(() => expect(getAssetLayer(container, 'character')).toBeNull())
 
@@ -91,23 +91,27 @@ describe('ThemeBackground with ThemeProvider', () => {
       )
     })
 
-    rerender(<BackgroundHarness appearance={CHAOGUANG_APPEARANCE} />)
+    rerender(<BackgroundHarness appearance={XUEHE_APPEARANCE} />)
     await waitFor(() => {
-      expect(getBackgroundContainer(container)).toHaveAttribute('data-theme-id', 'chaoguang')
+      expect(getBackgroundContainer(container)).toHaveAttribute('data-theme-id', 'xuehe')
       expect(getAssetLayer(container, 'character')).toHaveAttribute(
         'src',
-        chaoguangTheme.assets.character!
+        xueheTheme.assets.character!
       )
     })
   })
 
-  it('passes clean mode to both the document root and background container', () => {
+  it('marks every xuehe artwork layer for hiding in clean mode', () => {
     const { container } = render(
-      <BackgroundHarness appearance={{ themeId: 'chaoguang', cleanMode: true }} />
+      <BackgroundHarness appearance={{ themeId: 'xuehe', cleanMode: true }} />
     )
+    const background = getBackgroundContainer(container)
 
-    expect(document.documentElement).toHaveAttribute('data-theme', 'chaoguang')
+    expect(document.documentElement).toHaveAttribute('data-theme', 'xuehe')
     expect(document.documentElement).toHaveAttribute('data-clean-mode', 'true')
-    expect(getBackgroundContainer(container)).toHaveAttribute('data-clean-mode', 'true')
+    expect(background).toHaveAttribute('data-clean-mode', 'true')
+    for (const asset of THEME_ASSET_KEYS) {
+      expect(getAssetLayer(container, asset)).toBeInTheDocument()
+    }
   })
 })

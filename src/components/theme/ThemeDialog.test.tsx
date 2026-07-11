@@ -71,14 +71,14 @@ describe('ThemeDialog', () => {
     const user = userEvent.setup()
     render(<DialogHarness />)
 
-    await user.click(getThemeRadio(/默认简洁/))
+    await user.click(getThemeRadio(/血河/))
     await user.click(screen.getByRole('switch', { name: /纯净模式/ }))
 
     expect(screen.getByTestId('persisted-theme')).toHaveTextContent('longyin')
-    expect(screen.getByTestId('active-theme')).toHaveTextContent('default')
+    expect(screen.getByTestId('active-theme')).toHaveTextContent('xuehe')
     expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('true')
-    expect(screen.getByTestId('preview-theme')).toHaveTextContent('default')
-    expect(document.documentElement).toHaveAttribute('data-theme', 'default')
+    expect(screen.getByTestId('preview-theme')).toHaveTextContent('xuehe')
+    expect(document.documentElement).toHaveAttribute('data-theme', 'xuehe')
     expect(document.documentElement).toHaveAttribute('data-clean-mode', 'true')
   })
 
@@ -86,7 +86,7 @@ describe('ThemeDialog', () => {
     const user = userEvent.setup()
     render(<DialogHarness />)
 
-    await user.click(getThemeRadio(/潮光/))
+    await user.click(getThemeRadio(/血河/))
     await user.click(screen.getByRole('button', { name: '取消' }))
 
     expect(screen.getByTestId('dialog-open')).toHaveTextContent('false')
@@ -99,7 +99,7 @@ describe('ThemeDialog', () => {
     const user = userEvent.setup()
     render(<DialogHarness />)
 
-    await user.click(getThemeRadio(/潮光/))
+    await user.click(getThemeRadio(/血河/))
     await user.keyboard('{Escape}')
 
     expect(screen.getByTestId('dialog-open')).toHaveTextContent('false')
@@ -113,16 +113,16 @@ describe('ThemeDialog', () => {
     const onApply = vi.fn().mockResolvedValue(undefined)
     render(<DialogHarness onApply={onApply} />)
 
-    await user.click(getThemeRadio(/潮光/))
+    await user.click(getThemeRadio(/血河/))
     await user.click(screen.getByRole('switch', { name: /纯净模式/ }))
     await user.click(screen.getByRole('button', { name: /应用主题/ }))
 
     await waitFor(() => {
-      expect(onApply).toHaveBeenCalledWith({ themeId: 'chaoguang', cleanMode: true })
+      expect(onApply).toHaveBeenCalledWith({ themeId: 'xuehe', cleanMode: true })
       expect(screen.getByTestId('dialog-open')).toHaveTextContent('false')
     })
-    expect(screen.getByTestId('persisted-theme')).toHaveTextContent('chaoguang')
-    expect(screen.getByTestId('active-theme')).toHaveTextContent('chaoguang')
+    expect(screen.getByTestId('persisted-theme')).toHaveTextContent('xuehe')
+    expect(screen.getByTestId('active-theme')).toHaveTextContent('xuehe')
     expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('true')
     expect(screen.getByTestId('preview-theme')).toHaveTextContent('none')
   })
@@ -145,13 +145,14 @@ describe('ThemeDialog', () => {
     expect(screen.getByRole('switch', { name: /纯净模式/ })).not.toBeChecked()
   })
 
-  it('supports previewing all three themes from the keyboard', async () => {
+  it('supports previewing all four themes from the keyboard', async () => {
     const user = userEvent.setup()
     render(<DialogHarness />)
 
     const defaultTheme = getThemeRadio(/默认简洁/)
     const longyinTheme = getThemeRadio(/龙吟/)
     const chaoguangTheme = getThemeRadio(/潮光/)
+    const xueheTheme = getThemeRadio(/血河/)
 
     defaultTheme.focus()
     await user.keyboard(' ')
@@ -169,6 +170,12 @@ describe('ThemeDialog', () => {
     await user.keyboard(' ')
     expect(chaoguangTheme).toBeChecked()
     expect(screen.getByTestId('active-theme')).toHaveTextContent('chaoguang')
+
+    await user.keyboard('{ArrowRight}')
+    expect(xueheTheme).toHaveFocus()
+    await user.keyboard(' ')
+    expect(xueheTheme).toBeChecked()
+    expect(screen.getByTestId('active-theme')).toHaveTextContent('xuehe')
   })
 
   it('supports toggling clean mode from the keyboard', async () => {
@@ -183,7 +190,7 @@ describe('ThemeDialog', () => {
     expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('true')
   })
 
-  it('renders three theme cards and omits profession badges that duplicate their names', () => {
+  it('renders four theme cards and omits profession badges that duplicate their names', () => {
     render(<DialogHarness />)
 
     expect(screen.queryByText('内置主题')).not.toBeInTheDocument()
@@ -191,15 +198,21 @@ describe('ThemeDialog', () => {
     expect(getThemeRadio(/默认简洁/)).toBeInTheDocument()
     expect(getThemeRadio(/龙吟/)).toBeInTheDocument()
     expect(getThemeRadio(/潮光/)).toBeInTheDocument()
+    expect(getThemeRadio(/血河/)).toBeInTheDocument()
+    expect(screen.getAllByRole('radio')).toHaveLength(4)
     expect(screen.getByAltText('龙吟主题预览')).toBeInTheDocument()
     expect(screen.getByAltText('潮光主题预览')).toBeInTheDocument()
+    expect(screen.getByAltText('血河主题预览')).toBeInTheDocument()
 
     const longyinCard = getThemeCard(/龙吟/)
     const chaoguangCard = getThemeCard(/潮光/)
+    const xueheCard = getThemeCard(/血河/)
     expect(within(longyinCard).getAllByText('龙吟')).toHaveLength(1)
     expect(within(chaoguangCard).getAllByText('潮光')).toHaveLength(1)
+    expect(within(xueheCard).getAllByText('血河')).toHaveLength(1)
     expect(longyinCard.querySelector('small')).toBeNull()
     expect(chaoguangCard.querySelector('small')).toBeNull()
+    expect(xueheCard.querySelector('small')).toBeNull()
   })
 
   it('renders through a portal and focuses the selected theme when opened', async () => {
@@ -241,10 +254,13 @@ describe('ThemeDialog', () => {
     const user = userEvent.setup()
     render(<DialogHarness />)
 
-    fireEvent.error(screen.getByAltText(/潮光主题预览/))
-    await user.click(getThemeRadio(/默认简洁/))
+    fireEvent.error(screen.getByAltText(/血河主题预览/))
+    await waitFor(() => {
+      expect(screen.queryByAltText(/血河主题预览/)).not.toBeInTheDocument()
+    })
+    await user.click(getThemeRadio(/血河/))
 
-    expect(getThemeRadio(/默认简洁/)).toBeChecked()
-    expect(screen.getByTestId('active-theme')).toHaveTextContent('default')
+    expect(getThemeRadio(/血河/)).toBeChecked()
+    expect(screen.getByTestId('active-theme')).toHaveTextContent('xuehe')
   })
 })

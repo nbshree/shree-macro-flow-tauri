@@ -1,4 +1,5 @@
 @import './chaoguang/theme.css';
+@import './xuehe/theme.css';
 
 :root,
 :root[data-theme='default'] {
@@ -279,7 +280,7 @@ body {
 }
 
 .theme-dialog {
-  width: min(790px, calc(100vw - 32px));
+  width: min(920px, calc(100vw - 32px));
   max-width: none;
   max-height: calc(100vh - 48px);
   margin: auto;
@@ -397,7 +398,7 @@ body {
 
 .theme-dialog__grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -715,15 +716,9 @@ body {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 880px) {
   .theme-dialog__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 680px) {
-  .theme-dialog {
-    width: calc(100vw - 20px);
   }
 }
 
