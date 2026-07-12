@@ -52,11 +52,13 @@ import {
   cycleDefinitions,
   defaultCalculatorInput,
   skillDefinitions,
+  tierDefinitions,
   type BaseStatId,
   type CalculatorInput,
   type ContributionCategory,
   type CycleId,
-  type SkillId
+  type SkillId,
+  type TierDefinition
 } from './domain'
 import internalSkillPanelExample from './assets/internal-skill-panel-example.webp'
 
@@ -67,11 +69,25 @@ const scoreFormatter = new Intl.NumberFormat('zh-CN', {
   maximumFractionDigits: 2
 })
 
+const manualRecognitionConfigNotice = '灵韵和周天组合需要手动配置。'
+
 const contributionCategoryLabels: Record<ContributionCategory, string> = {
   'base-stat': '基础词条',
   spirit: '灵',
   trait: '特性',
   cycle: '周天'
+}
+
+const formatTierRange = (tier: TierDefinition): string => {
+  if (tier.minScore === null) {
+    return `${tier.maxScore}%以下`
+  }
+
+  if (tier.maxScore === null) {
+    return `${tier.minScore}%+`
+  }
+
+  return `${tier.minScore}%~${tier.maxScore}%`
 }
 
 const cloneCalculatorInput = (input: CalculatorInput): CalculatorInput => ({
@@ -351,7 +367,7 @@ export function InternalSkillCalculatorPage({
         .then((recognition) => {
           applyRecognition(recognition)
           setRecognitionMessage(
-            `识别完成：已回填 ${recognition.equippedSkillIds.length} 个内功，灵状态保持不变。灵韵和周天组合需要手动配置。`
+            `识别完成：已回填 ${recognition.equippedSkillIds.length} 个内功，灵状态保持不变。${manualRecognitionConfigNotice}`
           )
         })
         .catch((error: unknown) => setRecognitionMessage(errorMessage(error)))
@@ -482,7 +498,18 @@ export function InternalSkillCalculatorPage({
         <Alert className="calculator-recognition-message" role="status">
           <Info aria-hidden="true" />
           <AlertTitle>AI 图片识别</AlertTitle>
-          <AlertDescription>{recognitionMessage}</AlertDescription>
+          <AlertDescription>
+            {recognitionMessage.endsWith(manualRecognitionConfigNotice) ? (
+              <>
+                {recognitionMessage.slice(0, -manualRecognitionConfigNotice.length)}
+                <strong className="calculator-recognition-manual-notice">
+                  {manualRecognitionConfigNotice}
+                </strong>
+              </>
+            ) : (
+              recognitionMessage
+            )}
+          </AlertDescription>
         </Alert>
       ) : null}
 
@@ -695,6 +722,20 @@ export function InternalSkillCalculatorPage({
                       已达到当前规则最高档位
                     </p>
                   )}
+                  <ul className="calculator-tier-guide" aria-label="综合评分档位说明">
+                    {tierDefinitions.map((tier) => (
+                      <li
+                        key={tier.id}
+                        data-tier={tier.id}
+                        data-current={tier.id === result.tier.id}
+                        aria-current={tier.id === result.tier.id ? 'true' : undefined}
+                      >
+                        <span>{formatTierRange(tier)}</span>
+                        <strong>{tier.label}</strong>
+                        {tier.id === result.tier.id ? <small>当前</small> : null}
+                      </li>
+                    ))}
+                  </ul>
                 </section>
 
                 <dl className="calculator-score-breakdown">

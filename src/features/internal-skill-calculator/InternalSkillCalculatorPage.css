@@ -24,8 +24,32 @@
 }
 
 .calculator-recognition-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-height: 44px;
   flex: none;
+}
+
+.calculator-recognition-message > svg {
+  flex: none;
+  transform: none;
+}
+
+.calculator-recognition-message [data-slot='alert-title'] {
+  min-height: auto;
+  flex: none;
+  white-space: nowrap;
+}
+
+.calculator-recognition-message [data-slot='alert-description'] {
+  display: block;
+  min-width: 0;
+}
+
+.calculator-recognition-manual-notice {
+  color: var(--color-danger);
+  font-weight: 700;
 }
 
 .calculator-recognition-overlay {
@@ -718,6 +742,80 @@
   color: var(--text-primary);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+.calculator-tier-guide {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  width: 100%;
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border-default);
+  list-style: none;
+  text-align: left;
+}
+
+.calculator-tier-guide li {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.calculator-tier-guide li:first-child,
+.calculator-tier-guide li:last-child {
+  grid-column: 1 / -1;
+}
+
+.calculator-tier-guide li[data-current='true'] {
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 9%, transparent);
+}
+
+.calculator-tier-guide li[data-tier='rebirthRecommended'] {
+  color: #1683a8;
+}
+
+.calculator-tier-guide li[data-tier='smallGoblin'],
+.calculator-tier-guide li[data-tier='largeGoblin'] {
+  color: #58a826;
+}
+
+.calculator-tier-guide li[data-tier='goblinElite'],
+.calculator-tier-guide li[data-tier='goblinGeneral'] {
+  color: #d06ab4;
+}
+
+.calculator-tier-guide li[data-tier='goblinKing'] {
+  color: #d8372f;
+}
+
+.calculator-tier-guide span {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.calculator-tier-guide strong {
+  overflow: hidden;
+  color: currentColor;
+  font-size: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calculator-tier-guide small {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: currentColor;
+  font-size: 9px;
+  font-weight: 800;
 }
 
 .calculator-score-breakdown {

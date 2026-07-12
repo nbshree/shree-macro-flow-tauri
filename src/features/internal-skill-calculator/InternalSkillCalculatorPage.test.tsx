@@ -53,7 +53,15 @@ describe('InternalSkillCalculatorPage', () => {
 
     const summary = screen.getByLabelText('综合评分')
     expect(within(summary).getByText('70.00')).toBeInTheDocument()
-    expect(within(summary).getByText('哥布林精英')).toHaveClass('calculator-tier-badge')
+    expect(summary.querySelector('.calculator-tier-badge')).toHaveTextContent('哥布林精英')
+    const tierGuide = within(summary).getByRole('list', { name: '综合评分档位说明' })
+    expect(within(tierGuide).getByText('63%以下')).toBeInTheDocument()
+    expect(within(tierGuide).getByText('63%~66%')).toBeInTheDocument()
+    expect(within(tierGuide).getByText('75%+')).toBeInTheDocument()
+    expect(within(tierGuide).getByText('哥布林精英').closest('li')).toHaveAttribute(
+      'aria-current',
+      'true'
+    )
 
     const clearButton = screen.getByRole('button', { name: '清空全部' })
     expect(clearButton).toBeEnabled()
@@ -206,6 +214,9 @@ describe('InternalSkillCalculatorPage', () => {
     expect(screen.getByRole('switch', { name: '携带承影锋烁' })).toBeChecked()
     expect(screen.getByRole('switch', { name: '众妙灵' })).toBeChecked()
     expect(screen.getByRole('combobox', { name: '周天组合' })).toHaveTextContent('金火')
+    expect(screen.getByText('灵韵和周天组合需要手动配置。')).toHaveClass(
+      'calculator-recognition-manual-notice'
+    )
   })
 
   it('keeps existing values when image recognition fails', async () => {

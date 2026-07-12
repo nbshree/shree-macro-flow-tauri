@@ -360,7 +360,7 @@ fn recognition_request(image_data_url: &str) -> Value {
         "model": VISION_MODEL,
         "input": [{ "role": "user", "content": content }],
         "reasoning": { "effort": "none" },
-        "max_output_tokens": 1200,
+        "max_output_tokens": 4096,
         "store": false
     })
 }
@@ -415,15 +415,68 @@ fn extract_response_text(payload: &Value) -> Result<String, String> {
         .filter(|item| item.get("type").and_then(Value::as_str) == Some("message"))
         .filter_map(|item| item.get("content").and_then(Value::as_array))
         .flatten()
-        .filter(|part| part.get("type").and_then(Value::as_str) == Some("output_text"))
-        .filter_map(|part| part.get("text").and_then(Value::as_str))
+        .filter(|part| {
+            matches!(
+                part.get("type").and_then(Value::as_str),
+                Some("output_text" | "text")
+            )
+        })
+        .filter_map(extract_content_part_text)
         .collect::<Vec<_>>()
         .join("");
-    if text.trim().is_empty() {
-        Err("AI 识别服务响应中没有可用的识别结果。".into())
-    } else {
-        Ok(text)
+    if !text.trim().is_empty() {
+        return Ok(text);
     }
+
+    if let Some(text) = payload
+        .pointer("/choices/0/message/content")
+        .and_then(Value::as_str)
+        .filter(|text| !text.trim().is_empty())
+    {
+        return Ok(text.to_string());
+    }
+
+    if let Some(reason) = payload
+        .pointer("/incomplete_details/reason")
+        .and_then(Value::as_str)
+    {
+        return Err(match reason {
+            "max_output_tokens" => {
+                "AI 识别输出超出长度限制，请重试；若仍失败，请裁剪截图后再识别。".into()
+            }
+            _ => format!("AI 识别响应未完成（{reason}），请重试。"),
+        });
+    }
+
+    if let Some(message) = payload
+        .pointer("/error/message")
+        .and_then(Value::as_str)
+        .filter(|message| !message.trim().is_empty())
+    {
+        return Err(format!("AI 识别服务未能完成识别：{}", message.trim()));
+    }
+
+    let refusal = payload
+        .get("output")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|item| item.get("content").and_then(Value::as_array))
+        .flatten()
+        .find(|part| part.get("type").and_then(Value::as_str) == Some("refusal"))
+        .and_then(|part| part.get("refusal").and_then(Value::as_str));
+    if let Some(refusal) = refusal {
+        return Err(format!("AI 识别服务拒绝处理该图片：{refusal}"));
+    }
+
+    Err("AI 识别服务响应中没有可用的识别结果，请重试。".into())
+}
+
+fn extract_content_part_text(part: &Value) -> Option<&str> {
+    part.get("text")
+        .and_then(Value::as_str)
+        .or_else(|| part.pointer("/text/value").and_then(Value::as_str))
+        .filter(|text| !text.trim().is_empty())
 }
 
 fn parse_recognition_content(content: &str) -> Result<InternalSkillRecognitionResult, String> {
@@ -597,6 +650,7 @@ mod tests {
         assert_eq!(request["model"], "gpt-5.6-terra");
         assert_eq!(request["store"], false);
         assert_eq!(request["reasoning"]["effort"], "none");
+        assert_eq!(request["max_output_tokens"], 4096);
         assert_eq!(request["input"][0]["content"][0]["type"], "input_text");
         assert_eq!(request["input"][0]["content"][2]["type"], "input_image");
         assert_eq!(request["input"][0]["content"][4]["type"], "input_image");
@@ -619,5 +673,53 @@ mod tests {
             Ok("{\"baseStats\":{}}")
         );
         assert!(extract_response_text(&json!({ "output": [] })).is_err());
+    }
+
+    #[test]
+    fn extracts_text_from_relay_compatible_payloads() {
+        let text_part = json!({
+            "output": [{
+                "type": "message",
+                "content": [{ "type": "text", "text": { "value": "{\"baseStats\":{}}" } }]
+            }]
+        });
+        assert_eq!(
+            extract_response_text(&text_part).as_deref(),
+            Ok("{\"baseStats\":{}}")
+        );
+
+        let chat_completion = json!({
+            "choices": [{ "message": { "content": "{\"baseStats\":{}}" } }]
+        });
+        assert_eq!(
+            extract_response_text(&chat_completion).as_deref(),
+            Ok("{\"baseStats\":{}}")
+        );
+    }
+
+    #[test]
+    fn reports_incomplete_and_refused_responses() {
+        let incomplete = json!({
+            "status": "incomplete",
+            "incomplete_details": { "reason": "max_output_tokens" },
+            "output": []
+        });
+        assert!(
+            extract_response_text(&incomplete)
+                .expect_err("incomplete response")
+                .contains("长度限制")
+        );
+
+        let refused = json!({
+            "output": [{
+                "type": "message",
+                "content": [{ "type": "refusal", "refusal": "image unsupported" }]
+            }]
+        });
+        assert!(
+            extract_response_text(&refused)
+                .expect_err("refused response")
+                .contains("拒绝处理")
+        );
     }
 }
