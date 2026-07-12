@@ -128,6 +128,34 @@ export function createMacroApi(state: MacroState = createMacroState()) {
     deleteProfile: vi.fn(async (_id: string) => state),
     exportProfile: vi.fn(async (_id: string) => state),
     importProfile: vi.fn(async () => state),
+    getMysteryCodeStatus: vi.fn<MacroAPI['getMysteryCodeStatus']>(async () => ({
+      configured: false,
+      lastFour: null
+    })),
+    saveAndValidateMysteryCode: vi.fn<MacroAPI['saveAndValidateMysteryCode']>(async () => ({
+      configured: true,
+      lastFour: '1234'
+    })),
+    deleteMysteryCode: vi.fn<MacroAPI['deleteMysteryCode']>(async () => ({
+      configured: false,
+      lastFour: null
+    })),
+    recognizeInternalSkillImage: vi.fn<MacroAPI['recognizeInternalSkillImage']>(async () => ({
+      baseStats: {
+        season: 0,
+        strengthOrQi: 0,
+        attack: 0,
+        armorPenetration: 0,
+        factionRestraint: 0,
+        criticalHit: 0,
+        maxAttack: 0,
+        minAttack: 0,
+        agility: 0,
+        endurance: 0,
+        constitution: 0
+      },
+      equippedSkillIds: []
+    })),
     onState: vi.fn((_callback: (nextState: MacroState) => void) => () => undefined),
     window: {
       minimize: vi.fn(async () => undefined),

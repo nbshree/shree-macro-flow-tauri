@@ -62,7 +62,7 @@ function App(): React.JSX.Element {
                 aria-labelledby="workspace-tab-calculator"
                 hidden={activeWorkspace !== 'calculator'}
               >
-                <InternalSkillCalculatorPage />
+                <InternalSkillCalculatorPage active={activeWorkspace === 'calculator'} />
               </section>
             </div>
           </div>

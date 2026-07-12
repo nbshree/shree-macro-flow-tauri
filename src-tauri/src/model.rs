@@ -126,6 +126,8 @@ pub struct PersistedData {
     pub profiles: Vec<MacroProfile>,
     #[serde(default = "default_appearance")]
     pub appearance: AppearancePreferences,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mystery_code: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -227,6 +229,7 @@ pub fn create_default_profile_store() -> PersistedData {
         active_profile_id: profile.id.clone(),
         profiles: vec![profile],
         appearance: default_appearance(),
+        mystery_code: None,
     }
 }
 
@@ -291,10 +294,17 @@ pub fn sanitize_persisted(value: &Value) -> PersistedData {
         .unwrap_or_default();
 
     let appearance = sanitize_appearance(object.get("appearance"));
+    let mystery_code = object
+        .get("mysteryCode")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
 
     if profiles.is_empty() {
         let mut store = create_default_profile_store();
         store.appearance = appearance;
+        store.mystery_code = mystery_code;
         return store;
     }
 
@@ -313,6 +323,7 @@ pub fn sanitize_persisted(value: &Value) -> PersistedData {
         active_profile_id,
         profiles,
         appearance,
+        mystery_code,
     }
 }
 
@@ -834,6 +845,21 @@ mod tests {
         assert_eq!(store.active_profile_id, store.profiles[0].id);
         assert_eq!(store.profiles[0].settings, default_settings());
         assert_eq!(store.appearance, default_appearance());
+        assert_eq!(store.mystery_code, None);
+    }
+
+    #[test]
+    fn mystery_code_is_trimmed_and_persisted_globally() {
+        let store = sanitize_persisted(&json!({
+            "profiles": [{ "id": "profile", "name": "方案" }],
+            "mysteryCode": "  shree  "
+        }));
+        assert_eq!(store.mystery_code.as_deref(), Some("shree"));
+
+        let serialized = serde_json::to_value(&store).expect("serialize store");
+        assert_eq!(serialized["mysteryCode"], "shree");
+        let profile = serde_json::to_value(&store.profiles[0]).expect("serialize profile");
+        assert!(profile.get("mysteryCode").is_none());
     }
 
     #[test]

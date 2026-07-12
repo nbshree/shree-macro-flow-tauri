@@ -42,6 +42,28 @@ export type AppearancePreferences = {
   cleanMode: boolean
 }
 
+export type MysteryCodeStatus = {
+  configured: boolean
+  lastFour: string | null
+}
+
+export type InternalSkillRecognitionResult = {
+  baseStats: {
+    season: number
+    strengthOrQi: number
+    attack: number
+    armorPenetration: number
+    factionRestraint: number
+    criticalHit: number
+    maxAttack: number
+    minAttack: number
+    agility: number
+    endurance: number
+    constitution: number
+  }
+  equippedSkillIds: string[]
+}
+
 export type MacroState = {
   points: MacroPoint[]
   settings: MacroSettings
@@ -103,6 +125,10 @@ export type MacroAPI = {
   deleteProfile: (id: string) => Promise<MacroState>
   exportProfile: (id: string) => Promise<MacroState>
   importProfile: () => Promise<MacroState>
+  getMysteryCodeStatus: () => Promise<MysteryCodeStatus>
+  saveAndValidateMysteryCode: (mysteryCode: string) => Promise<MysteryCodeStatus>
+  deleteMysteryCode: () => Promise<MysteryCodeStatus>
+  recognizeInternalSkillImage: (imageDataUrl: string) => Promise<InternalSkillRecognitionResult>
   onState: (callback: (state: MacroState) => void) => () => void
   window: WindowControlsAPI
 }
@@ -200,6 +226,14 @@ export const macroApi: MacroAPI = {
   deleteProfile: (id) => invokeState('delete_profile', { id }),
   exportProfile: (id) => invokeState('export_profile', { id }),
   importProfile: () => invokeState('import_profile'),
+  getMysteryCodeStatus: () => callTauri(() => invoke<MysteryCodeStatus>('get_mystery_code_status')),
+  saveAndValidateMysteryCode: (mysteryCode) =>
+    callTauri(() => invoke<MysteryCodeStatus>('save_and_validate_mystery_code', { mysteryCode })),
+  deleteMysteryCode: () => callTauri(() => invoke<MysteryCodeStatus>('delete_mystery_code')),
+  recognizeInternalSkillImage: (imageDataUrl) =>
+    callTauri(() =>
+      invoke<InternalSkillRecognitionResult>('recognize_internal_skill_image', { imageDataUrl })
+    ),
   onState: (callback) => {
     let disposed = false
     let unlisten: UnlistenFn | undefined

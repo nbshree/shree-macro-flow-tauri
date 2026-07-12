@@ -2,20 +2,33 @@ import {
   Award,
   CircleHelp,
   Eraser,
+  Eye,
+  EyeOff,
   Gauge,
   Info,
+  KeyRound,
   Link2,
+  LoaderCircle,
   SlidersHorizontal,
   Sparkles,
   TrendingUp,
   Trophy
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -24,6 +37,13 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  macroApi,
+  type InternalSkillRecognitionResult,
+  type MacroAPI,
+  type MysteryCodeStatus
+} from '@/lib/macro-api'
 
 import {
   baseStatDefinitions,
@@ -38,6 +58,7 @@ import {
   type CycleId,
   type SkillId
 } from './domain'
+import internalSkillPanelExample from './assets/internal-skill-panel-example.webp'
 
 import './InternalSkillCalculatorPage.css'
 
@@ -115,8 +136,84 @@ function PanelHeading({ id, icon, title, description, children }: PanelHeadingPr
   )
 }
 
-export function InternalSkillCalculatorPage() {
+const MAX_CLIPBOARD_IMAGE_BYTES = 20 * 1024 * 1024
+const MAX_RECOGNITION_IMAGE_DIMENSION = 2048
+const RECOGNITION_WEBP_QUALITY = 0.86
+const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+
+const fileToDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () =>
+      typeof reader.result === 'string'
+        ? resolve(reader.result)
+        : reject(new Error('无法读取剪贴板图片。'))
+    reader.onerror = () => reject(new Error('无法读取剪贴板图片。'))
+    reader.readAsDataURL(file)
+  })
+
+const optimizeImageToDataUrl = async (file: File) => {
+  if (typeof createImageBitmap !== 'function') return fileToDataUrl(file)
+
+  let bitmap: ImageBitmap | undefined
+  try {
+    bitmap = await createImageBitmap(file)
+    const scale = Math.min(
+      1,
+      MAX_RECOGNITION_IMAGE_DIMENSION / Math.max(bitmap.width, bitmap.height)
+    )
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+    const context = canvas.getContext('2d')
+    if (!context) return fileToDataUrl(file)
+
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const optimized = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/webp', RECOGNITION_WEBP_QUALITY)
+    )
+    if (!optimized || (scale === 1 && optimized.size >= file.size)) return fileToDataUrl(file)
+    return fileToDataUrl(new File([optimized], 'recognition.webp', { type: 'image/webp' }))
+  } catch {
+    return fileToDataUrl(file)
+  } finally {
+    bitmap?.close()
+  }
+}
+
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error || '操作失败，请重试。')
+
+type InternalSkillCalculatorPageProps = {
+  active?: boolean
+  api?: Pick<
+    MacroAPI,
+    | 'getMysteryCodeStatus'
+    | 'saveAndValidateMysteryCode'
+    | 'deleteMysteryCode'
+    | 'recognizeInternalSkillImage'
+  >
+}
+
+export function InternalSkillCalculatorPage({
+  active = false,
+  api = macroApi
+}: InternalSkillCalculatorPageProps) {
   const [calculatorInput, setCalculatorInput] = useState<CalculatorInput>(createEmptyInput)
+  const [credentialStatus, setCredentialStatus] = useState<MysteryCodeStatus>({
+    configured: false,
+    lastFour: null
+  })
+  const [credentialDialogOpen, setCredentialDialogOpen] = useState(false)
+  const [mysteryCodeDraft, setMysteryCodeDraft] = useState('')
+  const [showMysteryCode, setShowMysteryCode] = useState(false)
+  const [credentialBusy, setCredentialBusy] = useState(false)
+  const [credentialError, setCredentialError] = useState('')
+  const [recognitionLoading, setRecognitionLoading] = useState(false)
+  const [recognitionMessage, setRecognitionMessage] = useState('')
+  const recognitionInFlightRef = useRef(false)
   const result = useMemo(() => calculateInternalSkill(calculatorInput), [calculatorInput])
   const equippedCount = skillDefinitions.reduce(
     (count, definition) => count + Number(calculatorInput.skills[definition.id].equipped),
@@ -185,8 +282,133 @@ export function InternalSkillCalculatorPage() {
 
   const clearAll = () => setCalculatorInput(createEmptyInput())
 
+  useEffect(() => {
+    if (!active) return
+
+    let cancelled = false
+    void api
+      .getMysteryCodeStatus()
+      .then((status) => {
+        if (!cancelled) setCredentialStatus(status)
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setRecognitionMessage(errorMessage(error))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [active, api])
+
+  const applyRecognition = (recognition: InternalSkillRecognitionResult) => {
+    const equipped = new Set(recognition.equippedSkillIds)
+    setCalculatorInput((current) => ({
+      baseStats: { ...recognition.baseStats },
+      skills: Object.fromEntries(
+        skillDefinitions.map((definition) => [
+          definition.id,
+          {
+            equipped: equipped.has(definition.id),
+            spirit: current.skills[definition.id].spirit
+          }
+        ])
+      ) as CalculatorInput['skills'],
+      cycleId: current.cycleId
+    }))
+  }
+
+  useEffect(() => {
+    if (!active || credentialDialogOpen) return
+
+    const handlePaste = (event: ClipboardEvent) => {
+      if (recognitionInFlightRef.current) return
+      const imageItem = Array.from(event.clipboardData?.items ?? []).find(
+        (item) => item.kind === 'file' && SUPPORTED_IMAGE_TYPES.has(item.type)
+      )
+      if (!imageItem) return
+
+      event.preventDefault()
+      setRecognitionMessage('')
+      if (!credentialStatus.configured) {
+        setCredentialError('请先配置有效的神秘代码。')
+        setCredentialDialogOpen(true)
+        return
+      }
+
+      const image = imageItem.getAsFile()
+      if (!image) {
+        setRecognitionMessage('无法读取剪贴板图片，请重新复制截图。')
+        return
+      }
+      if (image.size > MAX_CLIPBOARD_IMAGE_BYTES) {
+        setRecognitionMessage('图片不能超过 20 MB。')
+        return
+      }
+
+      recognitionInFlightRef.current = true
+      setRecognitionLoading(true)
+      void optimizeImageToDataUrl(image)
+        .then((imageDataUrl) => api.recognizeInternalSkillImage(imageDataUrl))
+        .then((recognition) => {
+          applyRecognition(recognition)
+          setRecognitionMessage(
+            `识别完成：已回填 ${recognition.equippedSkillIds.length} 个内功，灵状态保持不变。灵韵和周天组合需要手动配置。`
+          )
+        })
+        .catch((error: unknown) => setRecognitionMessage(errorMessage(error)))
+        .finally(() => {
+          recognitionInFlightRef.current = false
+          setRecognitionLoading(false)
+        })
+    }
+
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [active, api, credentialDialogOpen, credentialStatus.configured])
+
+  const openCredentialDialog = () => {
+    setMysteryCodeDraft('')
+    setCredentialError('')
+    setShowMysteryCode(false)
+    setCredentialDialogOpen(true)
+  }
+
+  const saveCredential = async () => {
+    if (!mysteryCodeDraft.trim()) {
+      setCredentialError('请输入神秘代码。')
+      return
+    }
+    setCredentialBusy(true)
+    setCredentialError('')
+    try {
+      const status = await api.saveAndValidateMysteryCode(mysteryCodeDraft)
+      setCredentialStatus(status)
+      setMysteryCodeDraft('')
+      setCredentialDialogOpen(false)
+      setRecognitionMessage('神秘代码和 GPT-5.6 Terra 识别服务验证成功并已保存。')
+    } catch (error) {
+      setCredentialError(errorMessage(error))
+    } finally {
+      setCredentialBusy(false)
+    }
+  }
+
+  const deleteCredential = async () => {
+    setCredentialBusy(true)
+    setCredentialError('')
+    try {
+      const status = await api.deleteMysteryCode()
+      setCredentialStatus(status)
+      setMysteryCodeDraft('')
+      setRecognitionMessage('已删除神秘代码。')
+    } catch (error) {
+      setCredentialError(errorMessage(error))
+    } finally {
+      setCredentialBusy(false)
+    }
+  }
+
   return (
-    <div className="internal-skill-calculator">
+    <div className="internal-skill-calculator" aria-busy={recognitionLoading}>
       <div className="calculator-toolbar">
         <div className="calculator-rule-summary">
           <div className="calculator-rule-badges">
@@ -204,12 +426,65 @@ export function InternalSkillCalculatorPage() {
           </div>
         </div>
         <div className="calculator-toolbar__actions">
+          <div className="calculator-paste-hint">
+            <span className="calculator-paste-hint__copy">
+              复制内功面板截图，按 <kbd>Ctrl+V</kbd> 即可计算
+            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="calculator-paste-hint__help"
+                  aria-label="查看截图示例"
+                >
+                  <span>截图示例</span>
+                  <CircleHelp aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                className="calculator-paste-example"
+                side="bottom"
+                align="end"
+                collisionPadding={12}
+              >
+                <strong>截图示例</strong>
+                <span>复制包含属性和内功图标的完整面板</span>
+                <img
+                  src={internalSkillPanelExample}
+                  alt="包含属性和内功图标的完整内功面板示例"
+                />
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            aria-label="AI 配置"
+            onClick={openCredentialDialog}
+          >
+            <KeyRound aria-hidden="true" />
+            AI 配置
+            <span
+              className="calculator-ai-status"
+              data-configured={credentialStatus.configured}
+              aria-hidden="true"
+              title={credentialStatus.configured ? '神秘代码已配置' : '神秘代码未配置'}
+            />
+          </Button>
           <Button type="button" variant="outline" disabled={!hasDraftInput} onClick={clearAll}>
             <Eraser aria-hidden="true" />
             清空全部
           </Button>
         </div>
       </div>
+
+      {recognitionMessage ? (
+        <Alert className="calculator-recognition-message" role="status">
+          <Info aria-hidden="true" />
+          <AlertTitle>AI 图片识别</AlertTitle>
+          <AlertDescription>{recognitionMessage}</AlertDescription>
+        </Alert>
+      ) : null}
 
       <div className="calculator-layout">
         <section className="calculator-panel calculator-base-panel" aria-labelledby="base-title">
@@ -496,6 +771,107 @@ export function InternalSkillCalculatorPage() {
           </div>
         </aside>
       </div>
+
+      {recognitionLoading ? (
+        <div className="calculator-recognition-overlay" role="status" aria-live="assertive">
+          <LoaderCircle aria-hidden="true" />
+          <strong>正在识别中</strong>
+          <span>正在读取属性并匹配内功图标，请稍候…</span>
+        </div>
+      ) : null}
+
+      <Dialog
+        open={credentialDialogOpen}
+        onOpenChange={(open) => {
+          if (!credentialBusy) setCredentialDialogOpen(open)
+        }}
+      >
+        <DialogContent className="calculator-ai-dialog">
+          <DialogHeader>
+            <DialogTitle>AI 图片识别配置</DialogTitle>
+            <DialogDescription>
+              输入神秘代码并验证。配置后，在内功评估页按 Ctrl+V 粘贴截图即可识别。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="calculator-ai-dialog__body">
+            <div className="calculator-ai-connection">
+              <span
+                className="calculator-ai-status"
+                data-configured={credentialStatus.configured}
+                aria-hidden="true"
+              />
+              <div>
+                <strong>{credentialStatus.configured ? '已配置' : '尚未配置'}</strong>
+                <span>
+                  {credentialStatus.configured && credentialStatus.lastFour
+                    ? `当前神秘代码尾号 ${credentialStatus.lastFour}`
+                    : '使用 GPT-5.6 Terra 图片理解模型'}
+                </span>
+              </div>
+            </div>
+
+            <div className="calculator-ai-key-field">
+              <Label htmlFor="mystery-code">神秘代码</Label>
+              <div>
+                <Input
+                  id="mystery-code"
+                  type={showMysteryCode ? 'text' : 'password'}
+                  value={mysteryCodeDraft}
+                  disabled={credentialBusy}
+                  autoComplete="off"
+                  placeholder={
+                    credentialStatus.configured ? '输入新神秘代码以替换' : '请输入神秘代码'
+                  }
+                  onChange={(event) => setMysteryCodeDraft(event.currentTarget.value)}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={credentialBusy}
+                  aria-label={showMysteryCode ? '隐藏神秘代码' : '显示神秘代码'}
+                  onClick={() => setShowMysteryCode((current) => !current)}
+                >
+                  {showMysteryCode ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                </Button>
+              </div>
+              <small>保存前会验证神秘代码，并调用一次 GPT-5.6 Terra 检查识别服务是否可用。</small>
+            </div>
+
+            {credentialError ? (
+              <Alert variant="destructive" role="alert">
+                <Info aria-hidden="true" />
+                <AlertTitle>配置失败</AlertTitle>
+                <AlertDescription>{credentialError}</AlertDescription>
+              </Alert>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            {credentialStatus.configured ? (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={credentialBusy}
+                onClick={() => void deleteCredential()}
+              >
+                删除神秘代码
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              disabled={credentialBusy || !mysteryCodeDraft.trim()}
+              onClick={() => void saveCredential()}
+            >
+              {credentialBusy ? (
+                <LoaderCircle className="calculator-spinner" aria-hidden="true" />
+              ) : null}
+              保存并验证
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

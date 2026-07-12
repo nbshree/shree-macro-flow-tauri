@@ -13,7 +13,7 @@ export type BaseStatId =
 
 export type SkillId =
   | 'zhuoXingGuanRi'
-  | 'chengYingFengDi'
+  | 'chengYingFengShuo'
   | 'jueDianJingSha'
   | 'riYueLiangYi'
   | 'chuKuangGe'

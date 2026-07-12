@@ -107,8 +107,8 @@ export const skillDefinitions: readonly SkillDefinition[] = [
     defaultSpirit: true
   },
   {
-    id: 'chengYingFengDi',
-    label: '承影锋镝',
+    id: 'chengYingFengShuo',
+    label: '承影锋烁',
     traitBaseScore: 6,
     spiritBaseScore: 3,
     defaultEquipped: true,

@@ -1,6 +1,7 @@
 mod commands;
 mod desktop;
 mod input;
+mod internal_skill_ai;
 mod model;
 mod shortcuts;
 mod state;
@@ -76,6 +77,10 @@ pub fn run() {
             commands::delete_profile,
             commands::export_profile,
             commands::import_profile,
+            internal_skill_ai::get_mystery_code_status,
+            internal_skill_ai::save_and_validate_mystery_code,
+            internal_skill_ai::delete_mystery_code,
+            internal_skill_ai::recognize_internal_skill_image,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Tauri application");
