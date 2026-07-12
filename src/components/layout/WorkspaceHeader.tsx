@@ -29,7 +29,7 @@ export function WorkspaceHeader({
           <span className="workspace-brand__author">作者 小踢踢</span>
         </div>
         <h1>自动点击流程台</h1>
-        <p>逆水寒手游 · 自动化流程管理</p>
+        <p>自动化流程管理</p>
       </div>
 
       <div className="workspace-header__actions">
