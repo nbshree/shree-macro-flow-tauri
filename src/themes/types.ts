@@ -13,6 +13,7 @@ export type ThemeId = (typeof THEME_IDS)[number]
 export type ThemeAssets = {
   background?: string
   character?: string
+  logCharacter?: string
   texture?: string
   cornerTopRight?: string
   cornerBottomLeft?: string

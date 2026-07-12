@@ -3,6 +3,7 @@ import type { ThemeDefinition } from '../types'
 export const jiulingThemeAssetPaths = {
   background: './assets/background.webp',
   character: './assets/character.webp',
+  logCharacter: './assets/log-character.webp',
   preview: './assets/preview.webp',
   texture: './assets/paper-noise.webp',
   cornerTopRight: './assets/corner-top-right.svg',
@@ -18,6 +19,7 @@ export const jiulingTheme: ThemeDefinition = {
   assets: {
     background: new URL('./assets/background.webp', import.meta.url).href,
     character: new URL('./assets/character.webp', import.meta.url).href,
+    logCharacter: new URL('./assets/log-character.webp', import.meta.url).href,
     texture: new URL('./assets/paper-noise.webp', import.meta.url).href,
     cornerTopRight: new URL('./assets/corner-top-right.svg', import.meta.url).href,
     cornerBottomLeft: new URL('./assets/corner-bottom-left.svg', import.meta.url).href

@@ -9,7 +9,9 @@ import {
   themeRegistry,
   themes
 } from './index'
+import { chaoguangThemeAssetPaths } from './chaoguang/theme'
 import { jiulingThemeAssetPaths } from './jiuling/theme'
+import { longyinThemeAssetPaths } from './longyin/theme'
 import { shenxiangThemeAssetPaths } from './shenxiang/theme'
 import { suwenThemeAssetPaths } from './suwen/theme'
 import { xueheThemeAssetPaths } from './xuehe/theme'
@@ -46,6 +48,7 @@ describe('theme registry', () => {
     expect(xueheThemeAssetPaths).toEqual({
       background: './assets/background.webp',
       character: './assets/character.webp',
+      logCharacter: './assets/log-character.webp',
       preview: './assets/preview.webp',
       texture: './assets/paper-noise.webp',
       cornerTopRight: './assets/corner-top-right.svg',
@@ -70,6 +73,7 @@ describe('theme registry', () => {
     expect(jiulingThemeAssetPaths).toEqual({
       background: './assets/background.webp',
       character: './assets/character.webp',
+      logCharacter: './assets/log-character.webp',
       preview: './assets/preview.webp',
       texture: './assets/paper-noise.webp',
       cornerTopRight: './assets/corner-top-right.svg',
@@ -94,6 +98,7 @@ describe('theme registry', () => {
     expect(suwenThemeAssetPaths).toEqual({
       background: './assets/background.webp',
       character: './assets/character.webp',
+      logCharacter: './assets/log-character.webp',
       preview: './assets/preview.webp',
       texture: './assets/paper-noise.webp',
       cornerTopRight: './assets/corner-top-right.svg',
@@ -118,6 +123,7 @@ describe('theme registry', () => {
     expect(shenxiangThemeAssetPaths).toEqual({
       background: './assets/background.webp',
       character: './assets/character.webp',
+      logCharacter: './assets/log-character.webp',
       preview: './assets/preview.webp',
       texture: './assets/paper-noise.webp',
       cornerTopRight: './assets/corner-top-right.svg',
@@ -131,6 +137,20 @@ describe('theme registry', () => {
     )
   })
 
+  it('registers a log character for every profession theme and omits it from default', () => {
+    const professionThemes = THEME_IDS.filter((themeId) => themeId !== 'default')
+
+    for (const themeId of professionThemes) {
+      expect(themeRegistry[themeId].assets.logCharacter).toContain(
+        `/themes/${themeId}/assets/log-character.webp`
+      )
+    }
+
+    expect(themeRegistry.default.assets.logCharacter).toBeUndefined()
+    expect(longyinThemeAssetPaths.logCharacter).toBe('./assets/log-character.webp')
+    expect(chaoguangThemeAssetPaths.logCharacter).toBe('./assets/log-character.webp')
+  })
+
   it.each(THEME_IDS)('recognizes the supported theme "%s"', (themeId) => {
     expect(isThemeId(themeId)).toBe(true)
     expect(getThemeDefinition(themeId)).toBe(themeRegistry[themeId])
@@ -141,6 +161,9 @@ describe('theme registry', () => {
     (themeId) => {
       expect(isThemeId(themeId)).toBe(false)
       expect(getThemeDefinition(themeId)).toBe(themeRegistry.longyin)
+      expect(getThemeDefinition(themeId).assets.logCharacter).toBe(
+        themeRegistry.longyin.assets.logCharacter
+      )
     }
   )
 

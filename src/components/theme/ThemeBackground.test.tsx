@@ -26,7 +26,8 @@ const PROFESSION_THEME_CASES = [
   }
 ] as const
 
-type BackgroundAssetKey = Exclude<ThemeAssetKey, 'preview'>
+type BackgroundAssetKey =
+  'background' | 'texture' | 'character' | 'cornerTopRight' | 'cornerBottomLeft'
 
 const THEME_ASSET_KEYS: BackgroundAssetKey[] = [
   'background',

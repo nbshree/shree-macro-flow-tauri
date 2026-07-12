@@ -70,6 +70,7 @@ src/themes/
    └─ assets/
       ├─ background.webp
       ├─ character.webp
+      ├─ log-character.webp
       ├─ preview.webp
       ├─ paper-noise.webp
       ├─ corner-top-right.svg
@@ -79,7 +80,9 @@ src/themes/
 规则：
 
 - 文件和目录名只使用小写 ASCII、数字和连字符。
-- 除 `preview` 外，所有素材字段均可省略；没有合格素材时应省略该层，不得用低质量占位图发布。
+- `ThemeAssets` 的素材字段在运行时保持可选，以支持 `default` 主题和单素材故障降级；
+  `default` 可以省略 `logCharacter`。但完整职业主题发布包必须提供第 6 节的七件套，
+  包括 `log-character.webp`，不得以字段可选为由缺件发布或使用低质量占位图。
 - `ThemeDefinition.preview` 当前是必填字符串。职业主题必须提供正式预览图；无素材的基础主题可以使用空字符串触发现有图标回退。
 - 主题专属 CSS 只允许定义 Token、装饰层位置和主题选择卡片的无图回退色，不得覆盖业务组件内部结构。
 - 当前 `default` 和 `longyin` 的 Token 位于 `src/themes/themes.css`，`chaoguang`、
@@ -91,19 +94,22 @@ src/themes/
 当前类型定义位于 `src/themes/types.ts`：
 
 ```ts
+type ThemeAssets = {
+  background?: string
+  character?: string
+  logCharacter?: string
+  texture?: string
+  cornerTopRight?: string
+  cornerBottomLeft?: string
+}
+
 type ThemeDefinition = {
   id: ThemeId
   name: string
   profession?: string
   description: string
   preview: string
-  assets: {
-    background?: string
-    character?: string
-    texture?: string
-    cornerTopRight?: string
-    cornerBottomLeft?: string
-  }
+  assets: ThemeAssets
 }
 ```
 
@@ -126,6 +132,7 @@ import type { ThemeDefinition } from '../types'
 export const suimengThemeAssetPaths = {
   background: './assets/background.webp',
   character: './assets/character.webp',
+  logCharacter: './assets/log-character.webp',
   preview: './assets/preview.webp',
   texture: './assets/paper-noise.webp',
   cornerTopRight: './assets/corner-top-right.svg',
@@ -141,6 +148,7 @@ export const suimengTheme: ThemeDefinition = {
   assets: {
     background: new URL('./assets/background.webp', import.meta.url).href,
     character: new URL('./assets/character.webp', import.meta.url).href,
+    logCharacter: new URL('./assets/log-character.webp', import.meta.url).href,
     texture: new URL('./assets/paper-noise.webp', import.meta.url).href,
     cornerTopRight: new URL('./assets/corner-top-right.svg', import.meta.url).href,
     cornerBottomLeft: new URL('./assets/corner-bottom-left.svg', import.meta.url).href
@@ -237,12 +245,13 @@ export const suimengTheme: ThemeDefinition = {
 
 ## 6. 素材规格与预算
 
-单个主题全部素材目标不超过约 2 MB。以下是发布上限，不是建议尽量用满的额度。
+单个完整职业主题七件套总计不得超过 `2,000,000 B`。以下是发布上限，不是建议尽量用满的额度。
 
 | 文件                     | 像素与格式     |   上限 | Alpha | 用途                       |
 | ------------------------ | -------------- | -----: | ----- | -------------------------- |
 | `background.webp`        | 1920×1280 WebP | 500 KB | 否    | 环境、山水、光影等全窗底图 |
 | `character.webp`         | 1200×1280 WebP | 1.2 MB | 是    | 右下角角色独立层           |
+| `log-character.webp`     | 384×384 WebP   | 250 KB | 是    | 日志左侧 Q 版职业人物      |
 | `preview.webp`           | 480×300 WebP   | 120 KB | 否    | 16:10 主题卡片预览         |
 | `paper-noise.webp`       | 512×512 WebP   | 100 KB | 否    | 全窗拉伸使用的低对比纹理   |
 | `corner-top-right.svg`   | SVG            |  30 KB | 是    | 右上边角装饰               |
@@ -250,9 +259,12 @@ export const suimengTheme: ThemeDefinition = {
 
 通用输出要求：
 
+- 七件套总体积必须不超过 `2,000,000 B`，`log-character.webp` 必须计入总预算。
 - 位图统一使用 sRGB，去除 EXIF、缩略图、定位和其他无关元数据。
 - 透明 WebP 不得残留白边、黑边、绿幕边或半透明脏底；在深色和浅色底上分别检查轮廓。
-- 背景、角色、纹理和边角必须完全分层，任何单层隐藏后都不能留下重复残影。
+- `log-character.webp` 必须是 384×384 sRGBA WebP，包含真实透明像素而不是全不透明 Alpha 通道，
+  四个画布角必须完全透明。
+- 背景、全屏角色、日志人物、纹理和边角必须完全分层，任何单层隐藏后都不能留下重复残影。
 - SVG 必须提供 `viewBox`，优先使用路径和基础图形；禁止脚本、外链图片、外链字体、滤镜堆栈和不可控的嵌入资源。
 - 不在素材内烘焙功能 UI、应用名称、按钮、表格、状态文字或热键。
 - 所有主题素材都不得烘焙职业题字或其他装饰文字；职业名称只通过界面文本展示。
@@ -275,7 +287,7 @@ export const suimengTheme: ThemeDefinition = {
   几何和少量旧铜节点。
 - `preview.webp` 由最终背景、角色和边角离线合成，左侧保留雾白空间，右侧展示左望枪客；
   不烘焙 UI、名称或 Logo。
-- 六件套继续遵守本节尺寸和单文件上限，主题总素材约 2 MB 以内；不提交绿幕源图、失败
+- 七件套继续遵守本节尺寸和单文件上限，主题总素材不超过 2,000,000 B；不提交绿幕源图、失败
   候选或临时合成文件。
 
 ## 7. 构图、安全区与锚点
@@ -304,7 +316,16 @@ export const suimengTheme: ThemeDefinition = {
 - 边角 SVG 的主要线条保持在各自 `viewBox` 内；贴边部分允许自然裁切，中心方向留出渐隐空间。
 - 不依靠边角素材遮盖背景或角色的接缝。
 
-### 7.4 预览图
+### 7.4 日志人物
+
+- `log-character.webp` 固定为 384×384，使用独立 Q 版构图，保留完整方形画布、柔光和 Alpha；
+  不从 `character.webp` 直接裁切、不烘焙文字或功能 UI。
+- 人物底部对齐并在日志面板左侧的独立透明位置内居中，主要轮廓不贴死四边，缩小到
+  112–140 CSS px 的占位宽度时
+  仍能辨识职业特征。
+- 该素材不属于全屏 `ThemeBackground` 图层，不应改变背景的安全区、锚点或五层测试合同。
+
+### 7.5 预览图
 
 - 预览固定 480×300，保留 16:10 比例，四周至少 12 px 视觉安全区。
 - 展示背景、角色和装饰的最终关系，但不模拟或烘焙真实按钮、表格和功能文字。
@@ -323,13 +344,21 @@ export const suimengTheme: ThemeDefinition = {
   -> 功能内容和面板
 ```
 
+- `logCharacter` 不属于上述五个全屏素材层；它由通用日志人物组件根据
+  `activeAppearance` 在日志面板左侧的独立透明位置渲染，主题预览时应立即跟随切换。
+  人物与日志 `<section>` 是兄弟节点；人物位不得使用面板底色、边框、阴影或圆角。
 - 所有装饰图片使用空 `alt`、`aria-hidden="true"`、`draggable={false}` 和 `pointer-events: none`，不进入键盘焦点顺序。
-- `ThemeProvider` 会预加载每个声明的资源，并维护 `idle/loading/loaded/error` 状态。
-- `ThemeBackground` 会独立隐藏缺失、预加载失败或 `<img>` 二次加载失败的层。主题 CSS 不得假设任意一层一定存在。
+- `ThemeProvider` 会预加载每个声明的资源，包括 `logCharacter`，并维护
+  `idle/loading/loaded/error` 状态。
+- `ThemeBackground` 会独立隐藏缺失、预加载失败或 `<img>` 二次加载失败的五个全屏层。
+  日志人物组件对 `logCharacter` 采用同等的独立降级：字段缺失或加载失败时收起整个独立
+  人物位，日志恢复全宽；切换到有效素材的主题后可再次显示。主题 CSS 不得假设任意素材
+  一定存在。
 - 预览图失败时选择器使用现有图标回退；主题名称、职业和描述必须仍可识别该主题。
 - 不要把可选素材改写为 CSS `background-image: url(...)`，否则会绕过现有加载状态和单层降级机制。
 - 任何素材失败时，纯色背景、面板、控件和正文都必须保持足够对比度；禁止依赖背景图中的暗区或亮区保证可读性。
-- 若某主题不需要纹理或边角，直接省略对应 `assets` 字段，不提供透明空文件。
+- 运行时类型允许基础主题或故障降级省略可选素材；完整职业主题仍必须提供七件套。
+  不得通过透明空文件伪造缺失的纹理、边角或日志人物。
 
 ## 9. 响应式与纯净模式
 
@@ -355,7 +384,7 @@ export const suimengTheme: ThemeDefinition = {
 纯净模式由根节点 `data-clean-mode='true'` 控制：
 
 - 保留主题的主色、文字、边框、状态色和日志配色。
-- 隐藏背景图、角色、纹理和全部边角装饰。
+- 隐藏背景图、角色、纹理、全部边角装饰和独立日志人物位，日志恢复全宽。
 - 使用纯色应用背景和高不透明度面板、输入表面。
 - 主题不得使用更高优先级或 `!important` 恢复装饰透明度。
 - 不要在业务面板伪元素中绘制职业纹样；这类内容不会被通用纯净模式自动识别。
@@ -375,8 +404,10 @@ export const suimengTheme: ThemeDefinition = {
 
 1. 确定稳定 ID、展示名称、职业名、描述、主色和视觉意象。
 2. 按本规范建立 `<theme-id>/theme.ts`、`theme.css` 和 `assets/`。
-3. 先输出背景、角色、纹理和边角四类独立素材，再制作最终预览图；不要从带 UI 的整张效果图直接切块发布。
-4. 在浅色和深色临时底上检查透明边缘，在 480×300 下检查预览辨识度。
+3. 先输出背景、全屏角色、日志 Q 版人物、纹理和边角独立素材，再制作最终预览图；
+   不要从带 UI 的整张效果图直接切块发布。
+4. 在浅色和深色临时底上检查两张人物图的透明边缘和四角，在 384×384 下检查日志人物构图，
+   在 480×300 下检查预览辨识度。
 5. 完成 ThemeDefinition，所有资源使用 `new URL(..., import.meta.url).href`。
 6. 完成 Token 映射和必要的装饰层位置覆盖；不修改业务组件。
 7. 一次性同步 TypeScript ID、注册表、CSS 导入和 Rust `sanitize_theme_id`。
@@ -398,10 +429,11 @@ export const suimengTheme: ThemeDefinition = {
 ### 12.2 素材
 
 - [ ] 每张位图像素尺寸、格式和单文件体积符合表格上限。
-- [ ] 单主题总素材约 2 MB 以内。
+- [ ] 完整职业主题包含七件套；单主题总素材（含日志人物）不超过 2,000,000 B。
 - [ ] 角色拥有干净 Alpha，无白边、黑边、绿边和脏底。
+- [ ] `log-character.webp` 为 384×384 sRGBA WebP，不超过 250,000 B，含真实透明且四角完全透明。
 - [ ] 纹理四边无缝，边角 SVG 无脚本、外链、字体和嵌入位图。
-- [ ] 背景、角色、纹理、边角完全分层，无重复内容。
+- [ ] 背景、全屏角色、日志人物、纹理和边角完全分层，无重复内容。
 - [ ] 素材不含按钮、表格、应用标题或其他功能文字。
 - [ ] 构图满足安全区，角色朝向内容区并锚定右下。
 
@@ -414,6 +446,7 @@ export const suimengTheme: ThemeDefinition = {
 - [ ] 应用后可持久化，重启恢复；保存失败回滚并显示明确错误。
 - [ ] 纯净模式隐藏全部装饰但保留主题配色和高对比面板。
 - [ ] 任意单层素材加载失败时只隐藏故障层，功能界面仍可操作。
+- [ ] 日志人物缺失、加载失败或处于纯净模式时，独立人物位收起且日志恢复全宽。
 - [ ] 键盘焦点可见，选择状态不依赖颜色，正文对比度达到 4.5:1。
 - [ ] 减少动态效果系统设置下没有持续或明显位移动画。
 

@@ -18,6 +18,7 @@ THEME_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 RASTER_SPECS = {
     "background.webp": ((1920, 1280), 500_000, False),
     "character.webp": ((1200, 1280), 1_200_000, True),
+    "log-character.webp": ((384, 384), 250_000, True),
     "preview.webp": ((480, 300), 120_000, False),
     "paper-noise.webp": ((512, 512), 100_000, False),
 }
@@ -109,7 +110,7 @@ def identify_raster(magick: str, path: Path) -> tuple[int, int, str, str, str, s
     )
 
 
-def character_corner_alpha(magick: str, path: Path, width: int, height: int) -> list[float]:
+def corner_alpha(magick: str, path: Path, width: int, height: int) -> list[float]:
     output = run_magick(
         magick,
         [
@@ -219,9 +220,15 @@ def validate(
 
         channel_word = channels.lower().split()[0]
         has_alpha = channel_word in {"rgba", "srgba"}
-        valid_channel_words = {"rgba", "srgba"} if requires_alpha else {"rgb", "srgb"}
+        if name == "log-character.webp":
+            valid_channel_words = {"srgba"}
+        else:
+            valid_channel_words = {"rgba", "srgba"} if requires_alpha else {"rgb", "srgb"}
         if channel_word not in valid_channel_words:
-            expected = "RGBA/sRGBA" if requires_alpha else "RGB/sRGB"
+            if name == "log-character.webp":
+                expected = "sRGBA"
+            else:
+                expected = "RGBA/sRGBA" if requires_alpha else "RGB/sRGB"
             errors.append(f"{name}: expected {expected} channels, got {channels}")
         if requires_alpha and not has_alpha:
             errors.append(f"{name}: alpha channel is required")
@@ -230,16 +237,16 @@ def validate(
         if requires_alpha and opaque.lower() != "false":
             errors.append(f"{name}: image must contain transparent pixels")
 
-        if name == "character.webp" and has_alpha:
+        if name in {"character.webp", "log-character.webp"} and has_alpha:
             try:
-                alpha_values = character_corner_alpha(magick, path, width, height)
-                if any(value > 1 / 255 for value in alpha_values):
+                alpha_values = corner_alpha(magick, path, width, height)
+                if any(value > 0 for value in alpha_values):
                     errors.append(
-                        "character.webp: all four canvas corners must be fully transparent "
+                        f"{name}: all four canvas corners must be fully transparent "
                         f"(got {alpha_values})"
                     )
             except (RuntimeError, ValueError) as error:
-                errors.append(f"character.webp: cannot inspect corner alpha ({error})")
+                errors.append(f"{name}: cannot inspect corner alpha ({error})")
 
     for name, size_limit in SVG_SPECS.items():
         path = assets_dir / name
