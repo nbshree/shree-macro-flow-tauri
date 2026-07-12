@@ -13,7 +13,8 @@ const LONGYIN_APPEARANCE: AppearancePreferences = {
 
 const PROFESSION_THEME_CASES = [
   { name: '九灵', themeId: 'jiuling' },
-  { name: '素问', themeId: 'suwen' }
+  { name: '素问', themeId: 'suwen' },
+  { name: '神相', themeId: 'shenxiang' }
 ] as const
 
 type DialogHarnessProps = {
@@ -166,7 +167,7 @@ describe('ThemeDialog', () => {
     expect(screen.getByRole('switch', { name: /纯净模式/ })).not.toBeChecked()
   })
 
-  it('supports previewing all six themes from the keyboard', async () => {
+  it('supports previewing all seven themes from the keyboard', async () => {
     const user = userEvent.setup()
     render(<DialogHarness />)
 
@@ -176,6 +177,7 @@ describe('ThemeDialog', () => {
     const xueheTheme = getThemeRadio(/血河/)
     const jiulingTheme = getThemeRadio(/九灵/)
     const suwenTheme = getThemeRadio(/素问/)
+    const shenxiangTheme = getThemeRadio(/神相/)
 
     defaultTheme.focus()
     await user.keyboard(' ')
@@ -211,6 +213,12 @@ describe('ThemeDialog', () => {
     await user.keyboard(' ')
     expect(suwenTheme).toBeChecked()
     expect(screen.getByTestId('active-theme')).toHaveTextContent('suwen')
+
+    await user.keyboard('{ArrowRight}')
+    expect(shenxiangTheme).toHaveFocus()
+    await user.keyboard(' ')
+    expect(shenxiangTheme).toBeChecked()
+    expect(screen.getByTestId('active-theme')).toHaveTextContent('shenxiang')
   })
 
   it('supports toggling clean mode from the keyboard', async () => {
@@ -225,7 +233,7 @@ describe('ThemeDialog', () => {
     expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('true')
   })
 
-  it('renders six theme cards and omits profession badges that duplicate their names', () => {
+  it('renders seven theme cards and omits profession badges that duplicate their names', () => {
     render(<DialogHarness />)
 
     expect(screen.queryByText('内置主题')).not.toBeInTheDocument()
@@ -236,28 +244,33 @@ describe('ThemeDialog', () => {
     expect(getThemeRadio(/血河/)).toBeInTheDocument()
     expect(getThemeRadio(/九灵/)).toBeInTheDocument()
     expect(getThemeRadio(/素问/)).toBeInTheDocument()
-    expect(screen.getAllByRole('radio')).toHaveLength(6)
+    expect(getThemeRadio(/神相/)).toBeInTheDocument()
+    expect(screen.getAllByRole('radio')).toHaveLength(7)
     expect(screen.getByAltText('龙吟主题预览')).toBeInTheDocument()
     expect(screen.getByAltText('潮光主题预览')).toBeInTheDocument()
     expect(screen.getByAltText('血河主题预览')).toBeInTheDocument()
     expect(screen.getByAltText('九灵主题预览')).toBeInTheDocument()
     expect(screen.getByAltText('素问主题预览')).toBeInTheDocument()
+    expect(screen.getByAltText('神相主题预览')).toBeInTheDocument()
 
     const longyinCard = getThemeCard(/龙吟/)
     const chaoguangCard = getThemeCard(/潮光/)
     const xueheCard = getThemeCard(/血河/)
     const jiulingCard = getThemeCard(/九灵/)
     const suwenCard = getThemeCard(/素问/)
+    const shenxiangCard = getThemeCard(/神相/)
     expect(within(longyinCard).getAllByText('龙吟')).toHaveLength(1)
     expect(within(chaoguangCard).getAllByText('潮光')).toHaveLength(1)
     expect(within(xueheCard).getAllByText('血河')).toHaveLength(1)
     expect(within(jiulingCard).getAllByText('九灵')).toHaveLength(1)
     expect(within(suwenCard).getAllByText('素问')).toHaveLength(1)
+    expect(within(shenxiangCard).getAllByText('神相')).toHaveLength(1)
     expect(longyinCard.querySelector('small')).toBeNull()
     expect(chaoguangCard.querySelector('small')).toBeNull()
     expect(xueheCard.querySelector('small')).toBeNull()
     expect(jiulingCard.querySelector('small')).toBeNull()
     expect(suwenCard.querySelector('small')).toBeNull()
+    expect(shenxiangCard.querySelector('small')).toBeNull()
   })
 
   it('renders through a portal and focuses the selected theme when opened', async () => {

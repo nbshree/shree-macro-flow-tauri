@@ -344,6 +344,7 @@ pub fn sanitize_theme_id(value: Option<&str>) -> String {
         Some("xuehe") => "xuehe".into(),
         Some("jiuling") => "jiuling".into(),
         Some("suwen") => "suwen".into(),
+        Some("shenxiang") => "shenxiang".into(),
         _ => DEFAULT_THEME_ID.into(),
     }
 }
@@ -795,6 +796,13 @@ mod tests {
         assert_eq!(suwen.appearance.theme_id, "suwen");
         assert!(!suwen.appearance.clean_mode);
 
+        let shenxiang = sanitize_persisted(&json!({
+            "profiles": [{ "id": "profile", "name": "方案" }],
+            "appearance": { "themeId": " shenxiang ", "cleanMode": false }
+        }));
+        assert_eq!(shenxiang.appearance.theme_id, "shenxiang");
+        assert!(!shenxiang.appearance.clean_mode);
+
         let unknown = sanitize_persisted(&json!({
             "profiles": [{ "id": "profile", "name": "方案" }],
             "appearance": { "themeId": "future-theme", "cleanMode": true }
@@ -822,15 +830,35 @@ mod tests {
         assert_eq!(suwen_patch.theme_id, "suwen");
         assert!(suwen_patch.clean_mode);
 
+        let shenxiang_patch = patch_appearance(
+            &valid.appearance,
+            &AppearancePatch {
+                theme_id: Some(" shenxiang ".into()),
+                clean_mode: None,
+            },
+        );
+        assert_eq!(shenxiang_patch.theme_id, "shenxiang");
+        assert!(shenxiang_patch.clean_mode);
+
         let clean_mode_patch = patch_appearance(
-            &jiuling_patch,
+            &shenxiang_patch,
             &AppearancePatch {
                 theme_id: None,
                 clean_mode: Some(false),
             },
         );
-        assert_eq!(clean_mode_patch.theme_id, "jiuling");
+        assert_eq!(clean_mode_patch.theme_id, "shenxiang");
         assert!(!clean_mode_patch.clean_mode);
+
+        let unknown_patch = patch_appearance(
+            &shenxiang_patch,
+            &AppearancePatch {
+                theme_id: Some(" future-theme ".into()),
+                clean_mode: None,
+            },
+        );
+        assert_eq!(unknown_patch.theme_id, DEFAULT_THEME_ID);
+        assert!(unknown_patch.clean_mode);
 
         let patched = patch_appearance(
             &unknown.appearance,

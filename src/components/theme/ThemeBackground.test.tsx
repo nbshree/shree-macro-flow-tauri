@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ThemeProvider, type AppearancePreferences, type ThemeAssetKey } from '../../themes'
 import { jiulingTheme } from '../../themes/jiuling/theme'
 import { longyinTheme } from '../../themes/longyin/theme'
+import { shenxiangTheme } from '../../themes/shenxiang/theme'
 import { suwenTheme } from '../../themes/suwen/theme'
 import { ThemeBackground } from './ThemeBackground'
 
@@ -17,6 +18,11 @@ const PROFESSION_THEME_CASES = [
     id: 'suwen',
     appearance: { themeId: 'suwen', cleanMode: false } satisfies AppearancePreferences,
     theme: suwenTheme
+  },
+  {
+    id: 'shenxiang',
+    appearance: { themeId: 'shenxiang', cleanMode: false } satisfies AppearancePreferences,
+    theme: shenxiangTheme
   }
 ] as const
 

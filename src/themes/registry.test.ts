@@ -10,12 +10,21 @@ import {
   themes
 } from './index'
 import { jiulingThemeAssetPaths } from './jiuling/theme'
+import { shenxiangThemeAssetPaths } from './shenxiang/theme'
 import { suwenThemeAssetPaths } from './suwen/theme'
 import { xueheThemeAssetPaths } from './xuehe/theme'
 
 describe('theme registry', () => {
   it('registers every supported theme once and in the declared order', () => {
-    expect(THEME_IDS).toEqual(['default', 'longyin', 'chaoguang', 'xuehe', 'jiuling', 'suwen'])
+    expect(THEME_IDS).toEqual([
+      'default',
+      'longyin',
+      'chaoguang',
+      'xuehe',
+      'jiuling',
+      'suwen',
+      'shenxiang'
+    ])
     expect(themes.map((theme) => theme.id)).toEqual(THEME_IDS)
     expect(Object.keys(themeRegistry)).toEqual(THEME_IDS)
     expect(themeRegistry.default.name).toBe('默认简洁')
@@ -96,6 +105,30 @@ describe('theme registry', () => {
     expect(themeRegistry.suwen.assets.cornerBottomLeft).toMatch(
       /^(?:data:image\/svg\+xml|.*corner-bottom-left\.svg)/
     )
+    expect(themeRegistry.shenxiang).toMatchObject({
+      id: 'shenxiang',
+      name: '神相',
+      profession: '神相',
+      description: '霁蓝、雪白与墨琴银纹交织的清越琴心主题。'
+    })
+    expect(themeRegistry.shenxiang.preview).toContain('preview.webp')
+    expect(themeRegistry.shenxiang.assets.background).toContain('background.webp')
+    expect(themeRegistry.shenxiang.assets.character).toContain('character.webp')
+    expect(themeRegistry.shenxiang.assets.texture).toContain('paper-noise.webp')
+    expect(shenxiangThemeAssetPaths).toEqual({
+      background: './assets/background.webp',
+      character: './assets/character.webp',
+      preview: './assets/preview.webp',
+      texture: './assets/paper-noise.webp',
+      cornerTopRight: './assets/corner-top-right.svg',
+      cornerBottomLeft: './assets/corner-bottom-left.svg'
+    })
+    expect(themeRegistry.shenxiang.assets.cornerTopRight).toMatch(
+      /^(?:data:image\/svg\+xml|.*corner-top-right\.svg)/
+    )
+    expect(themeRegistry.shenxiang.assets.cornerBottomLeft).toMatch(
+      /^(?:data:image\/svg\+xml|.*corner-bottom-left\.svg)/
+    )
   })
 
   it.each(THEME_IDS)('recognizes the supported theme "%s"', (themeId) => {
@@ -135,6 +168,10 @@ describe('theme registry', () => {
     })
     expect(normalizeAppearance({ themeId: 'suwen', cleanMode: true })).toEqual({
       themeId: 'suwen',
+      cleanMode: true
+    })
+    expect(normalizeAppearance({ themeId: 'shenxiang', cleanMode: true })).toEqual({
+      themeId: 'shenxiang',
       cleanMode: true
     })
   })

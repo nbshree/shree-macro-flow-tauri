@@ -2,6 +2,7 @@ import { chaoguangTheme } from './chaoguang/theme'
 import { defaultTheme } from './default/theme'
 import { jiulingTheme } from './jiuling/theme'
 import { longyinTheme } from './longyin/theme'
+import { shenxiangTheme } from './shenxiang/theme'
 import { suwenTheme } from './suwen/theme'
 import { xueheTheme } from './xuehe/theme'
 import {
@@ -19,7 +20,8 @@ export const themeRegistry: Readonly<Record<ThemeId, ThemeDefinition>> = {
   chaoguang: chaoguangTheme,
   xuehe: xueheTheme,
   jiuling: jiulingTheme,
-  suwen: suwenTheme
+  suwen: suwenTheme,
+  shenxiang: shenxiangTheme
 }
 
 export const themes: readonly ThemeDefinition[] = THEME_IDS.map((id) => themeRegistry[id])

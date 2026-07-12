@@ -15,7 +15,7 @@
 ### 1.1 当前内置主题
 
 主题卡片顺序由 `THEME_IDS` 决定，固定为
-`default → longyin → chaoguang → xuehe → jiuling → suwen`。当前共六个内置主题，默认值仍固定为
+`default → longyin → chaoguang → xuehe → jiuling → suwen → shenxiang`。当前共七个内置主题，默认值仍固定为
 `longyin`：
 
 | 顺序 | ID          | 展示名称 | `profession` | 说明                 |
@@ -26,6 +26,7 @@
 |    4 | `xuehe`     | 血河     | 血河         | 玄铁绛红枪阵主题     |
 |    5 | `jiuling`   | 九灵     | 九灵         | 暮樱紫雾御灵主题     |
 |    6 | `suwen`     | 素问     | 素问         | 月白青瓷疗愈主题     |
+|    7 | `shenxiang` | 神相     | 神相         | 霁蓝雪岭清越琴心主题 |
 
 血河主题以冷雾玄铁为基调，以克制绛红和旧铜点缀，营造冷峻枪阵氛围；避免大面积
 正红、纯黑或亮金。
@@ -35,6 +36,9 @@
 
 素问主题以月白、青瓷绿、旧金莲饰和晨雾药庐为核心，丝带与人物收束在右侧；左侧控制区
 和中部流程区保持安静、通透，不使用潮光的海蓝水光或九灵的紫雾灵蝶。
+
+神相主题以霁蓝雪岭、墨黑漆琴、旧银琴徽和寒山琴台为核心，人物与古楼收束在右侧；
+左侧控制区和中部流程区保持雾白、低频、低对比，不照搬龙吟的兵刃斜线或潮光的海境虹彩。
 
 职业主题的 `name` 使用职业名本身，不添加“·意象”等自造后缀。`profession` 可以与
 `name` 相同；主题选择器会在两者相同时隐藏职业徽标，避免出现“潮光 / 潮光”一类重复文案。
@@ -79,7 +83,7 @@ src/themes/
 - `ThemeDefinition.preview` 当前是必填字符串。职业主题必须提供正式预览图；无素材的基础主题可以使用空字符串触发现有图标回退。
 - 主题专属 CSS 只允许定义 Token、装饰层位置和主题选择卡片的无图回退色，不得覆盖业务组件内部结构。
 - 当前 `default` 和 `longyin` 的 Token 位于 `src/themes/themes.css`，`chaoguang`、
-  `xuehe`、`jiuling` 和 `suwen` 分别使用独立的主题 CSS，并在中央样式文件顶部导入。
+  `xuehe`、`jiuling`、`suwen` 和 `shenxiang` 分别使用独立的主题 CSS，并在中央样式文件顶部导入。
   后续主题沿用独立文件方式；不要把职业规则散落到 `src/assets/main.css`。
 
 ## 3. ThemeDefinition 约定

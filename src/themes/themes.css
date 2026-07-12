@@ -2,6 +2,7 @@
 @import './xuehe/theme.css';
 @import './jiuling/theme.css';
 @import './suwen/theme.css';
+@import './shenxiang/theme.css';
 
 :root,
 :root[data-theme='default'] {
