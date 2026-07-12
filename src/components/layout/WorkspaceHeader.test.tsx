@@ -12,16 +12,19 @@ function renderHeader(themeId: ThemeId, onOpenTheme = vi.fn()) {
   const controller = createMacroController({
     state: createMacroState({ appearance: { themeId, cleanMode: false } })
   })
+  const onWorkspaceChange = vi.fn()
 
   renderWithUiProviders(
     <WorkspaceHeader
       controller={controller}
+      activeWorkspace="macro"
       themeTriggerRef={createRef<HTMLButtonElement>()}
+      onWorkspaceChange={onWorkspaceChange}
       onOpenTheme={onOpenTheme}
     />
   )
 
-  return { onOpenTheme }
+  return { onOpenTheme, onWorkspaceChange }
 }
 
 describe('WorkspaceHeader', () => {
@@ -47,5 +50,26 @@ describe('WorkspaceHeader', () => {
     await user.click(screen.getByRole('button', { name: '主题：龙吟' }))
 
     expect(onOpenTheme).toHaveBeenCalledTimes(1)
+  })
+
+  it('switches to the calculator workspace from the top-level tabs', async () => {
+    const user = userEvent.setup()
+    const { onWorkspaceChange } = renderHeader('longyin')
+
+    await user.click(screen.getByRole('tab', { name: '内功评估' }))
+
+    expect(onWorkspaceChange).toHaveBeenCalledWith('calculator')
+  })
+
+  it('supports arrow-key navigation between workspace tabs', async () => {
+    const user = userEvent.setup()
+    const { onWorkspaceChange } = renderHeader('longyin')
+
+    const macroTab = screen.getByRole('tab', { name: '宏流程' })
+    macroTab.focus()
+    await user.keyboard('{ArrowRight}')
+
+    expect(onWorkspaceChange).toHaveBeenCalledWith('calculator')
+    expect(screen.getByRole('tab', { name: '内功评估' })).toHaveFocus()
   })
 })
