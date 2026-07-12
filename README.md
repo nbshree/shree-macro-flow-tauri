@@ -1,6 +1,21 @@
 # Shree Macro Flow
 
-`Shree Macro Flow` 是一个基于 Tauri 2、React、TypeScript 和 Rust 的 Windows 桌面宏工具，支持：
+基于 Tauri 2、React、TypeScript 和 Rust 开发的 Windows 桌面工具，集自动化宏流程与
+《逆水寒》手游新世界内功评估于一体。
+
+[![Latest Release](https://img.shields.io/github/v/release/nbshree/shree-macro-flow-tauri?label=release)](https://github.com/nbshree/shree-macro-flow-tauri/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4)](https://github.com/nbshree/shree-macro-flow-tauri/releases/latest)
+
+## 下载
+
+前往 [Releases](https://github.com/nbshree/shree-macro-flow-tauri/releases/latest) 下载最新的
+`自动点击流程台_x.x.x_x64-setup.exe` 并安装。
+
+当前版本：`v1.5.1`
+
+## 功能
+
+### 宏流程
 
 - 采集屏幕物理坐标并执行鼠标左键单击或双击
 - 执行普通键、功能键以及 `Ctrl` / `Alt` / `Shift` 组合键
@@ -10,6 +25,50 @@
 - 多方案管理、JSON 导入导出和本地持久化
 - 系统托盘、关闭到托盘和单实例运行
 - Per-Monitor V2 DPI 感知和多显示器负坐标
+
+### 新世界内功评估
+
+- 录入赛年、力量/气海、攻击、破防、流派克制、会心等 11 项基础属性
+- 配置 15 个内功的携带与“灵”状态，以及金火、火木、金木周天组合
+- 实时计算词条分、特性分、综合评分、贡献排行和联动说明
+- 展示评分档位、当前档位和距离下一档所需分数
+- 支持复制游戏内功面板截图后，在评估页按 `Ctrl+V` 调用 AI 自动识别
+- AI 识别自动回填可见属性和已携带内功；灵韵、灵状态与周天组合需手动确认
+
+### 界面与主题
+
+- 宏流程和内功评估双工作区切换
+- 默认、龙吟、潮光、血河、九灵、素问和神相主题
+- 主题外观、职业立绘和界面偏好本地保存
+
+## 内功评分规则来源
+
+本项目内功评估功能根据以下原表格及规则整理实现：
+
+> **7.8 日新世界防守团内功计算器**<br>
+> 由月望舒（逆水寒手游）制作<br>
+> 感谢杰少、满天星河、智齿提供帮助<br>
+> 计算公式来源于折字愿为安<br>
+> **无偿分享**
+
+感谢以上作者和参与者提供原始计算规则与帮助。应用将表格中的基础属性换算系数、内功携带
+与“灵”加分、内功联动、周天收益及评分档位转换为程序内置规则。
+
+原表格仅用于规则核对和回归验证，应用运行时不会读取或分发该 Excel 文件。AI 图片识别只负责
+提取截图中的属性和已携带内功，不参与制定评分公式，也不会改变计算权重。
+
+该评分体系属于非官方配装参考，并不代表游戏官方战力结论。游戏版本、赛年数值或内功机制
+调整后，现有系数可能需要同步更新，请结合实战表现判断。
+
+## 内功截图识别
+
+1. 在“内功评估”工作区点击“AI 配置”，配置并验证神秘代码。
+2. 在游戏中打开完整内功面板，确保属性词条和已携带内功图标清晰可见。
+3. 复制截图，返回应用后按 `Ctrl+V`。
+4. 检查自动回填结果，并手动设置灵韵、灵状态和周天组合。
+
+建议使用完整、无遮挡的内功面板截图。图片仅通过后端识别命令处理，前端不开放通用文件系统、
+Shell 或任意命令执行权限。
 
 ## 技术栈
 
@@ -55,6 +114,18 @@ NSIS 安装包输出在：
 
 ```text
 src-tauri/target/release/bundle/nsis/
+```
+
+完整发布前建议执行：
+
+```powershell
+pnpm typecheck
+pnpm test
+pnpm build
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+pnpm tauri:build
 ```
 
 ## 用户数据
