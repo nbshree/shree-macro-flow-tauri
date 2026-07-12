@@ -11,6 +11,11 @@ const LONGYIN_APPEARANCE: AppearancePreferences = {
   cleanMode: false
 }
 
+const PROFESSION_THEME_CASES = [
+  { name: '九灵', themeId: 'jiuling' },
+  { name: '素问', themeId: 'suwen' }
+] as const
+
 type DialogHarnessProps = {
   onApply?: (appearance: AppearancePreferences) => unknown | Promise<unknown>
 }
@@ -67,65 +72,81 @@ function getThemeCard(name: RegExp): HTMLElement {
 }
 
 describe('ThemeDialog', () => {
-  it('previews theme and clean mode changes immediately without persisting them', async () => {
-    const user = userEvent.setup()
-    render(<DialogHarness />)
+  it.each(PROFESSION_THEME_CASES)(
+    'previews $name theme and clean mode changes without persisting them',
+    async ({ name, themeId }) => {
+      const user = userEvent.setup()
+      render(<DialogHarness />)
 
-    await user.click(getThemeRadio(/血河/))
-    await user.click(screen.getByRole('switch', { name: /纯净模式/ }))
+      await user.click(getThemeRadio(new RegExp(name)))
+      await user.click(screen.getByRole('switch', { name: /纯净模式/ }))
 
-    expect(screen.getByTestId('persisted-theme')).toHaveTextContent('longyin')
-    expect(screen.getByTestId('active-theme')).toHaveTextContent('xuehe')
-    expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('true')
-    expect(screen.getByTestId('preview-theme')).toHaveTextContent('xuehe')
-    expect(document.documentElement).toHaveAttribute('data-theme', 'xuehe')
-    expect(document.documentElement).toHaveAttribute('data-clean-mode', 'true')
-  })
+      expect(screen.getByTestId('persisted-theme')).toHaveTextContent('longyin')
+      expect(screen.getByTestId('active-theme')).toHaveTextContent(themeId)
+      expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('true')
+      expect(screen.getByTestId('preview-theme')).toHaveTextContent(themeId)
+      expect(document.documentElement).toHaveAttribute('data-theme', themeId)
+      expect(document.documentElement).toHaveAttribute('data-clean-mode', 'true')
+    }
+  )
 
-  it('restores the original appearance when cancelled with the button', async () => {
-    const user = userEvent.setup()
-    render(<DialogHarness />)
+  it.each(PROFESSION_THEME_CASES)(
+    'restores the original appearance when $name is cancelled with the button',
+    async ({ name }) => {
+      const user = userEvent.setup()
+      render(<DialogHarness />)
 
-    await user.click(getThemeRadio(/血河/))
-    await user.click(screen.getByRole('button', { name: '取消' }))
+      await user.click(getThemeRadio(new RegExp(name)))
+      await user.click(screen.getByRole('button', { name: '取消' }))
 
-    expect(screen.getByTestId('dialog-open')).toHaveTextContent('false')
-    expect(screen.getByTestId('active-theme')).toHaveTextContent('longyin')
-    expect(screen.getByTestId('preview-theme')).toHaveTextContent('none')
-    await waitFor(() => expect(screen.getByRole('button', { name: '打开主题设置' })).toHaveFocus())
-  })
-
-  it('restores the original appearance when dismissed with Escape', async () => {
-    const user = userEvent.setup()
-    render(<DialogHarness />)
-
-    await user.click(getThemeRadio(/血河/))
-    await user.keyboard('{Escape}')
-
-    expect(screen.getByTestId('dialog-open')).toHaveTextContent('false')
-    expect(screen.getByTestId('active-theme')).toHaveTextContent('longyin')
-    expect(screen.getByTestId('preview-theme')).toHaveTextContent('none')
-    await waitFor(() => expect(screen.getByRole('button', { name: '打开主题设置' })).toHaveFocus())
-  })
-
-  it('applies the selected theme and clean mode, then closes the dialog', async () => {
-    const user = userEvent.setup()
-    const onApply = vi.fn().mockResolvedValue(undefined)
-    render(<DialogHarness onApply={onApply} />)
-
-    await user.click(getThemeRadio(/血河/))
-    await user.click(screen.getByRole('switch', { name: /纯净模式/ }))
-    await user.click(screen.getByRole('button', { name: /应用主题/ }))
-
-    await waitFor(() => {
-      expect(onApply).toHaveBeenCalledWith({ themeId: 'xuehe', cleanMode: true })
       expect(screen.getByTestId('dialog-open')).toHaveTextContent('false')
-    })
-    expect(screen.getByTestId('persisted-theme')).toHaveTextContent('xuehe')
-    expect(screen.getByTestId('active-theme')).toHaveTextContent('xuehe')
-    expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('true')
-    expect(screen.getByTestId('preview-theme')).toHaveTextContent('none')
-  })
+      expect(screen.getByTestId('active-theme')).toHaveTextContent('longyin')
+      expect(screen.getByTestId('preview-theme')).toHaveTextContent('none')
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: '打开主题设置' })).toHaveFocus()
+      )
+    }
+  )
+
+  it.each(PROFESSION_THEME_CASES)(
+    'restores the original appearance when $name is dismissed with Escape',
+    async ({ name }) => {
+      const user = userEvent.setup()
+      render(<DialogHarness />)
+
+      await user.click(getThemeRadio(new RegExp(name)))
+      await user.keyboard('{Escape}')
+
+      expect(screen.getByTestId('dialog-open')).toHaveTextContent('false')
+      expect(screen.getByTestId('active-theme')).toHaveTextContent('longyin')
+      expect(screen.getByTestId('preview-theme')).toHaveTextContent('none')
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: '打开主题设置' })).toHaveFocus()
+      )
+    }
+  )
+
+  it.each(PROFESSION_THEME_CASES)(
+    'applies the selected $name theme and clean mode, then closes the dialog',
+    async ({ name, themeId }) => {
+      const user = userEvent.setup()
+      const onApply = vi.fn().mockResolvedValue(undefined)
+      render(<DialogHarness onApply={onApply} />)
+
+      await user.click(getThemeRadio(new RegExp(name)))
+      await user.click(screen.getByRole('switch', { name: /纯净模式/ }))
+      await user.click(screen.getByRole('button', { name: /应用主题/ }))
+
+      await waitFor(() => {
+        expect(onApply).toHaveBeenCalledWith({ themeId, cleanMode: true })
+        expect(screen.getByTestId('dialog-open')).toHaveTextContent('false')
+      })
+      expect(screen.getByTestId('persisted-theme')).toHaveTextContent(themeId)
+      expect(screen.getByTestId('active-theme')).toHaveTextContent(themeId)
+      expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('true')
+      expect(screen.getByTestId('preview-theme')).toHaveTextContent('none')
+    }
+  )
 
   it('rolls back the preview and shows a useful error when saving fails', async () => {
     const user = userEvent.setup()
@@ -145,7 +166,7 @@ describe('ThemeDialog', () => {
     expect(screen.getByRole('switch', { name: /纯净模式/ })).not.toBeChecked()
   })
 
-  it('supports previewing all four themes from the keyboard', async () => {
+  it('supports previewing all six themes from the keyboard', async () => {
     const user = userEvent.setup()
     render(<DialogHarness />)
 
@@ -153,6 +174,8 @@ describe('ThemeDialog', () => {
     const longyinTheme = getThemeRadio(/龙吟/)
     const chaoguangTheme = getThemeRadio(/潮光/)
     const xueheTheme = getThemeRadio(/血河/)
+    const jiulingTheme = getThemeRadio(/九灵/)
+    const suwenTheme = getThemeRadio(/素问/)
 
     defaultTheme.focus()
     await user.keyboard(' ')
@@ -176,6 +199,18 @@ describe('ThemeDialog', () => {
     await user.keyboard(' ')
     expect(xueheTheme).toBeChecked()
     expect(screen.getByTestId('active-theme')).toHaveTextContent('xuehe')
+
+    await user.keyboard('{ArrowRight}')
+    expect(jiulingTheme).toHaveFocus()
+    await user.keyboard(' ')
+    expect(jiulingTheme).toBeChecked()
+    expect(screen.getByTestId('active-theme')).toHaveTextContent('jiuling')
+
+    await user.keyboard('{ArrowRight}')
+    expect(suwenTheme).toHaveFocus()
+    await user.keyboard(' ')
+    expect(suwenTheme).toBeChecked()
+    expect(screen.getByTestId('active-theme')).toHaveTextContent('suwen')
   })
 
   it('supports toggling clean mode from the keyboard', async () => {
@@ -190,7 +225,7 @@ describe('ThemeDialog', () => {
     expect(screen.getByTestId('active-clean-mode')).toHaveTextContent('true')
   })
 
-  it('renders four theme cards and omits profession badges that duplicate their names', () => {
+  it('renders six theme cards and omits profession badges that duplicate their names', () => {
     render(<DialogHarness />)
 
     expect(screen.queryByText('内置主题')).not.toBeInTheDocument()
@@ -199,20 +234,30 @@ describe('ThemeDialog', () => {
     expect(getThemeRadio(/龙吟/)).toBeInTheDocument()
     expect(getThemeRadio(/潮光/)).toBeInTheDocument()
     expect(getThemeRadio(/血河/)).toBeInTheDocument()
-    expect(screen.getAllByRole('radio')).toHaveLength(4)
+    expect(getThemeRadio(/九灵/)).toBeInTheDocument()
+    expect(getThemeRadio(/素问/)).toBeInTheDocument()
+    expect(screen.getAllByRole('radio')).toHaveLength(6)
     expect(screen.getByAltText('龙吟主题预览')).toBeInTheDocument()
     expect(screen.getByAltText('潮光主题预览')).toBeInTheDocument()
     expect(screen.getByAltText('血河主题预览')).toBeInTheDocument()
+    expect(screen.getByAltText('九灵主题预览')).toBeInTheDocument()
+    expect(screen.getByAltText('素问主题预览')).toBeInTheDocument()
 
     const longyinCard = getThemeCard(/龙吟/)
     const chaoguangCard = getThemeCard(/潮光/)
     const xueheCard = getThemeCard(/血河/)
+    const jiulingCard = getThemeCard(/九灵/)
+    const suwenCard = getThemeCard(/素问/)
     expect(within(longyinCard).getAllByText('龙吟')).toHaveLength(1)
     expect(within(chaoguangCard).getAllByText('潮光')).toHaveLength(1)
     expect(within(xueheCard).getAllByText('血河')).toHaveLength(1)
+    expect(within(jiulingCard).getAllByText('九灵')).toHaveLength(1)
+    expect(within(suwenCard).getAllByText('素问')).toHaveLength(1)
     expect(longyinCard.querySelector('small')).toBeNull()
     expect(chaoguangCard.querySelector('small')).toBeNull()
     expect(xueheCard.querySelector('small')).toBeNull()
+    expect(jiulingCard.querySelector('small')).toBeNull()
+    expect(suwenCard.querySelector('small')).toBeNull()
   })
 
   it('renders through a portal and focuses the selected theme when opened', async () => {
@@ -250,17 +295,22 @@ describe('ThemeDialog', () => {
     await waitFor(() => expect(screen.getByTestId('dialog-open')).toHaveTextContent('false'))
   })
 
-  it('keeps the dialog usable when a theme preview image fails', async () => {
-    const user = userEvent.setup()
-    render(<DialogHarness />)
+  it.each(PROFESSION_THEME_CASES)(
+    'keeps the dialog usable when the $name preview image fails',
+    async ({ name, themeId }) => {
+      const user = userEvent.setup()
+      const previewName = new RegExp(`${name}主题预览`)
+      const radioName = new RegExp(name)
+      render(<DialogHarness />)
 
-    fireEvent.error(screen.getByAltText(/血河主题预览/))
-    await waitFor(() => {
-      expect(screen.queryByAltText(/血河主题预览/)).not.toBeInTheDocument()
-    })
-    await user.click(getThemeRadio(/血河/))
+      fireEvent.error(screen.getByAltText(previewName))
+      await waitFor(() => {
+        expect(screen.queryByAltText(previewName)).not.toBeInTheDocument()
+      })
+      await user.click(getThemeRadio(radioName))
 
-    expect(getThemeRadio(/血河/)).toBeChecked()
-    expect(screen.getByTestId('active-theme')).toHaveTextContent('xuehe')
-  })
+      expect(getThemeRadio(radioName)).toBeChecked()
+      expect(screen.getByTestId('active-theme')).toHaveTextContent(themeId)
+    }
+  )
 })

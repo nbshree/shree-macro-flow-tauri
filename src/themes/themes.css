@@ -1,5 +1,7 @@
 @import './chaoguang/theme.css';
 @import './xuehe/theme.css';
+@import './jiuling/theme.css';
+@import './suwen/theme.css';
 
 :root,
 :root[data-theme='default'] {

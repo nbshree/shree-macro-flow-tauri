@@ -1,4 +1,4 @@
-export const THEME_IDS = ['default', 'longyin', 'chaoguang', 'xuehe'] as const
+export const THEME_IDS = ['default', 'longyin', 'chaoguang', 'xuehe', 'jiuling', 'suwen'] as const
 
 export type ThemeId = (typeof THEME_IDS)[number]
 

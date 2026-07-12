@@ -28,7 +28,9 @@ describe('WorkspaceHeader', () => {
   it.each([
     ['longyin', '主题：龙吟'],
     ['chaoguang', '主题：潮光'],
-    ['xuehe', '主题：血河']
+    ['xuehe', '主题：血河'],
+    ['jiuling', '主题：九灵'],
+    ['suwen', '主题：素问']
   ] as const)('shows the registered theme name for %s', (themeId, label) => {
     renderHeader(themeId)
 

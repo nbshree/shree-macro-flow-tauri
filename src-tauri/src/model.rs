@@ -342,6 +342,8 @@ pub fn sanitize_theme_id(value: Option<&str>) -> String {
         Some("longyin") => "longyin".into(),
         Some("chaoguang") => "chaoguang".into(),
         Some("xuehe") => "xuehe".into(),
+        Some("jiuling") => "jiuling".into(),
+        Some("suwen") => "suwen".into(),
         _ => DEFAULT_THEME_ID.into(),
     }
 }
@@ -779,6 +781,20 @@ mod tests {
         assert_eq!(xuehe.appearance.theme_id, "xuehe");
         assert!(!xuehe.appearance.clean_mode);
 
+        let jiuling = sanitize_persisted(&json!({
+            "profiles": [{ "id": "profile", "name": "方案" }],
+            "appearance": { "themeId": " jiuling ", "cleanMode": false }
+        }));
+        assert_eq!(jiuling.appearance.theme_id, "jiuling");
+        assert!(!jiuling.appearance.clean_mode);
+
+        let suwen = sanitize_persisted(&json!({
+            "profiles": [{ "id": "profile", "name": "方案" }],
+            "appearance": { "themeId": " suwen ", "cleanMode": false }
+        }));
+        assert_eq!(suwen.appearance.theme_id, "suwen");
+        assert!(!suwen.appearance.clean_mode);
+
         let unknown = sanitize_persisted(&json!({
             "profiles": [{ "id": "profile", "name": "方案" }],
             "appearance": { "themeId": "future-theme", "cleanMode": true }
@@ -786,24 +802,34 @@ mod tests {
         assert_eq!(unknown.appearance.theme_id, DEFAULT_THEME_ID);
         assert!(unknown.appearance.clean_mode);
 
-        let xuehe_patch = patch_appearance(
+        let jiuling_patch = patch_appearance(
             &valid.appearance,
             &AppearancePatch {
-                theme_id: Some(" xuehe ".into()),
+                theme_id: Some(" jiuling ".into()),
                 clean_mode: None,
             },
         );
-        assert_eq!(xuehe_patch.theme_id, "xuehe");
-        assert!(xuehe_patch.clean_mode);
+        assert_eq!(jiuling_patch.theme_id, "jiuling");
+        assert!(jiuling_patch.clean_mode);
+
+        let suwen_patch = patch_appearance(
+            &valid.appearance,
+            &AppearancePatch {
+                theme_id: Some(" suwen ".into()),
+                clean_mode: None,
+            },
+        );
+        assert_eq!(suwen_patch.theme_id, "suwen");
+        assert!(suwen_patch.clean_mode);
 
         let clean_mode_patch = patch_appearance(
-            &xuehe_patch,
+            &jiuling_patch,
             &AppearancePatch {
                 theme_id: None,
                 clean_mode: Some(false),
             },
         );
-        assert_eq!(clean_mode_patch.theme_id, "xuehe");
+        assert_eq!(clean_mode_patch.theme_id, "jiuling");
         assert!(!clean_mode_patch.clean_mode);
 
         let patched = patch_appearance(
