@@ -38,15 +38,11 @@ mod platform {
     }
 
     pub fn click(x: i32, y: i32) -> Result<(), String> {
-        if unsafe { SetCursorPos(x, y) } == 0 {
-            return Err(last_error("SetCursorPos"));
-        }
+        mouse_click(x, y, 1)
+    }
 
-        let inputs = [
-            mouse_input(MOUSEEVENTF_LEFTDOWN),
-            mouse_input(MOUSEEVENTF_LEFTUP),
-        ];
-        send_inputs(&inputs)
+    pub fn double_click(x: i32, y: i32) -> Result<(), String> {
+        mouse_click(x, y, 2)
     }
 
     pub fn key(key: &str, modifiers: &[KeyModifier]) -> Result<(), String> {
@@ -93,6 +89,59 @@ mod platform {
                     ..Default::default()
                 },
             },
+        }
+    }
+
+    fn mouse_click(x: i32, y: i32, click_count: usize) -> Result<(), String> {
+        perform_mouse_click(
+            x,
+            y,
+            click_count,
+            set_cursor_position,
+            send_inputs,
+            send_inputs_best_effort,
+        )
+    }
+
+    fn perform_mouse_click<SetCursor, Send, Release>(
+        x: i32,
+        y: i32,
+        click_count: usize,
+        set_cursor: SetCursor,
+        send: Send,
+        release: Release,
+    ) -> Result<(), String>
+    where
+        SetCursor: FnOnce(i32, i32) -> Result<(), String>,
+        Send: FnOnce(&[INPUT]) -> Result<(), String>,
+        Release: FnOnce(&[INPUT]),
+    {
+        set_cursor(x, y)?;
+        let inputs = mouse_click_inputs(click_count);
+        if let Err(error) = send(&inputs) {
+            // A partial SendInput may stop after LEFTDOWN. A best-effort release avoids leaving
+            // the primary mouse button logically held down.
+            release(&[mouse_input(MOUSEEVENTF_LEFTUP)]);
+            Err(error)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn mouse_click_inputs(click_count: usize) -> Vec<INPUT> {
+        let mut inputs = Vec::with_capacity(click_count * 2);
+        for _ in 0..click_count {
+            inputs.push(mouse_input(MOUSEEVENTF_LEFTDOWN));
+            inputs.push(mouse_input(MOUSEEVENTF_LEFTUP));
+        }
+        inputs
+    }
+
+    fn set_cursor_position(x: i32, y: i32) -> Result<(), String> {
+        if unsafe { SetCursorPos(x, y) } == 0 {
+            Err(last_error("SetCursorPos"))
+        } else {
+            Ok(())
         }
     }
 
@@ -156,6 +205,95 @@ mod platform {
     fn last_error(operation: &str) -> String {
         format!("{operation} 失败：{}", io::Error::last_os_error())
     }
+
+    #[cfg(test)]
+    mod tests {
+        use std::cell::RefCell;
+
+        use super::*;
+
+        fn mouse_flags(inputs: &[INPUT]) -> Vec<u32> {
+            inputs
+                .iter()
+                .map(|input| unsafe { input.Anonymous.mi.dwFlags })
+                .collect()
+        }
+
+        #[test]
+        fn single_click_positions_once_and_sends_two_events() {
+            let positions = RefCell::new(Vec::new());
+            let batches = RefCell::new(Vec::new());
+            perform_mouse_click(
+                -120,
+                45,
+                1,
+                |x, y| {
+                    positions.borrow_mut().push((x, y));
+                    Ok(())
+                },
+                |inputs| {
+                    batches.borrow_mut().push(mouse_flags(inputs));
+                    Ok(())
+                },
+                |_| panic!("successful click must not send a recovery release"),
+            )
+            .expect("single click succeeds");
+
+            assert_eq!(*positions.borrow(), vec![(-120, 45)]);
+            assert_eq!(
+                *batches.borrow(),
+                vec![vec![MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP]]
+            );
+        }
+
+        #[test]
+        fn double_click_positions_once_and_sends_four_events_in_one_batch() {
+            let positions = RefCell::new(Vec::new());
+            let batches = RefCell::new(Vec::new());
+            perform_mouse_click(
+                -800,
+                -200,
+                2,
+                |x, y| {
+                    positions.borrow_mut().push((x, y));
+                    Ok(())
+                },
+                |inputs| {
+                    batches.borrow_mut().push(mouse_flags(inputs));
+                    Ok(())
+                },
+                |_| panic!("successful double-click must not send a recovery release"),
+            )
+            .expect("double-click succeeds");
+
+            assert_eq!(*positions.borrow(), vec![(-800, -200)]);
+            assert_eq!(
+                *batches.borrow(),
+                vec![vec![
+                    MOUSEEVENTF_LEFTDOWN,
+                    MOUSEEVENTF_LEFTUP,
+                    MOUSEEVENTF_LEFTDOWN,
+                    MOUSEEVENTF_LEFTUP,
+                ]]
+            );
+        }
+
+        #[test]
+        fn partial_send_failure_triggers_best_effort_left_button_release() {
+            let releases = RefCell::new(Vec::new());
+            let result = perform_mouse_click(
+                10,
+                20,
+                2,
+                |_, _| Ok(()),
+                |_| Err("partial SendInput".into()),
+                |inputs| releases.borrow_mut().push(mouse_flags(inputs)),
+            );
+
+            assert_eq!(result, Err("partial SendInput".into()));
+            assert_eq!(*releases.borrow(), vec![vec![MOUSEEVENTF_LEFTUP]]);
+        }
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -172,9 +310,15 @@ mod platform {
         Err("当前平台暂不支持模拟鼠标点击".into())
     }
 
+    pub fn double_click(_x: i32, _y: i32) -> Result<(), String> {
+        Err("当前平台暂不支持模拟鼠标双击".into())
+    }
+
     pub fn key(_key: &str, _modifiers: &[KeyModifier]) -> Result<(), String> {
         Err("当前平台暂不支持模拟键盘输入".into())
     }
 }
 
-pub use platform::{click, enable_per_monitor_dpi_awareness, get_cursor_position, key};
+pub use platform::{
+    click, double_click, enable_per_monitor_dpi_awareness, get_cursor_position, key,
+};

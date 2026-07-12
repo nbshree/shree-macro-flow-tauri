@@ -11,6 +11,8 @@ import type { AppearancePreferences, MacroPoint, MacroSettings, MacroState } fro
 
 export const emergencyStopHotkey = 'Ctrl+Alt+Esc'
 
+type ImmediatePointPatch = Partial<Pick<MacroPoint, 'action' | 'enabled'>>
+
 const minLogPanelHeight = 96
 const minFlowPanelHeight = 180
 const logResizeHandleHeight = 12
@@ -119,6 +121,7 @@ export type MacroController = {
   profileNameInputRef: RefObject<HTMLInputElement | null>
   isEditingLocked: boolean
   canStopRecording: boolean
+  enabledPointCount: number
   status: { label: string; tone: 'warning' | 'success' | 'primary' | 'muted' }
   targetLoops: string
   updateState: (action: Promise<MacroState>) => Promise<void>
@@ -134,6 +137,7 @@ export type MacroController = {
     key: keyof MacroSettings['hotkeys']
   ) => void
   updateDraftPoint: (id: string, patch: Partial<MacroPoint>) => void
+  updatePoint: (id: string, patch: ImmediatePointPatch) => Promise<void>
   savePoint: (id: string) => void
   syncDefaultDelayToPoints: () => Promise<void>
   closeKeyStepEditor: () => void
@@ -187,7 +191,11 @@ export function useMacroController(): MacroController {
     setProfileNameInputState(value)
   }, [])
 
-  function applyState(nextState: MacroState, preserveDrafts = false): void {
+  function applyState(
+    nextState: MacroState,
+    preserveDrafts = false,
+    appliedPointPatch?: { id: string; patch: ImmediatePointPatch }
+  ): void {
     setState(nextState)
 
     if (!preserveDrafts || !draftSettingsDirtyRef.current) {
@@ -199,8 +207,14 @@ export function useMacroController(): MacroController {
     if (preserveDrafts && dirtyDraftPointIdsRef.current.size > 0) {
       setDraftPoints((current) => {
         for (const id of [...dirtyDraftPointIdsRef.current]) {
-          if (nextDraftPoints[id] && current[id]) nextDraftPoints[id] = current[id]
-          else dirtyDraftPointIdsRef.current.delete(id)
+          if (nextDraftPoints[id] && current[id]) {
+            nextDraftPoints[id] = {
+              ...current[id],
+              ...(appliedPointPatch?.id === id ? appliedPointPatch.patch : {})
+            }
+          } else {
+            dirtyDraftPointIdsRef.current.delete(id)
+          }
         }
         return nextDraftPoints
       })
@@ -288,15 +302,25 @@ export function useMacroController(): MacroController {
 
   const isEditingLocked = state.isRecording || state.isRunning
   const canStopRecording = state.isRecording
+  const enabledPointCount = state.points.reduce((count, point) => count + Number(point.enabled), 0)
   const status = useMemo<MacroController['status']>(() => {
     if (state.isRunning && state.countdownRemaining > 0) {
       return { label: `${state.countdownRemaining}s 后执行`, tone: 'warning' }
     }
     if (state.isRunning) return { label: '执行中', tone: 'success' }
     if (state.isRecording) return { label: '录制中', tone: 'warning' }
-    if (state.points.length > 0) return { label: '已配置', tone: 'primary' }
+    if (state.points.length > 0 && enabledPointCount === 0) {
+      return { label: '全部禁用', tone: 'muted' }
+    }
+    if (enabledPointCount > 0) return { label: '已配置', tone: 'primary' }
     return { label: '待命', tone: 'muted' }
-  }, [state.countdownRemaining, state.isRecording, state.isRunning, state.points.length])
+  }, [
+    enabledPointCount,
+    state.countdownRemaining,
+    state.isRecording,
+    state.isRunning,
+    state.points.length
+  ])
   const targetLoops =
     state.settings.loopMode === 'infinite' ? '无限' : `${Math.max(1, state.settings.loopCount)}`
 
@@ -356,6 +380,17 @@ export function useMacroController(): MacroController {
       ...current,
       [id]: { ...current[id], ...patch }
     }))
+  }
+
+  async function updatePoint(id: string, patch: ImmediatePointPatch): Promise<void> {
+    const currentPoint = draftPoints[id] ?? state.points.find((point) => point.id === id)
+    if (!currentPoint || isEditingLocked) return
+
+    try {
+      applyState(await window.api.updatePoint(id, patch), true, { id, patch })
+    } catch (error) {
+      console.error('更新流程步骤失败', error)
+    }
   }
 
   function savePoint(id: string): void {
@@ -509,6 +544,7 @@ export function useMacroController(): MacroController {
     profileNameInputRef,
     isEditingLocked,
     canStopRecording,
+    enabledPointCount,
     status,
     targetLoops,
     updateState,
@@ -518,6 +554,7 @@ export function useMacroController(): MacroController {
     stopHotkeyCapture,
     captureHotkey,
     updateDraftPoint,
+    updatePoint,
     savePoint,
     syncDefaultDelayToPoints,
     closeKeyStepEditor,

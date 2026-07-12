@@ -17,6 +17,7 @@ const point: MacroPoint = {
   id: 'point-1',
   label: '步骤一',
   action: 'click',
+  enabled: true,
   x: 100,
   y: 200,
   key: '',
@@ -58,9 +59,23 @@ describe('ControlPanel', () => {
       expected: { record: true, stopRecording: false, run: false, stopRun: false }
     },
     {
-      name: 'idle with steps',
-      controller: createMacroController({ state: createMacroState({ points: [point] }) }),
+      name: 'idle with partially enabled steps',
+      controller: createMacroController({
+        state: createMacroState({
+          points: [
+            { ...point, enabled: false },
+            { ...point, id: 'point-2' }
+          ]
+        })
+      }),
       expected: { record: true, stopRecording: false, run: true, stopRun: false }
+    },
+    {
+      name: 'idle with all steps disabled',
+      controller: createMacroController({
+        state: createMacroState({ points: [{ ...point, enabled: false }] })
+      }),
+      expected: { record: true, stopRecording: false, run: false, stopRun: false }
     },
     {
       name: 'recording',

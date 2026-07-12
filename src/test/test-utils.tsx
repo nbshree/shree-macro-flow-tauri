@@ -4,7 +4,7 @@ import { vi } from 'vitest'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { emptyState, type MacroController } from '@/hooks/useMacroController'
-import type { MacroAPI, MacroState } from '@/lib/macro-api'
+import type { MacroAPI, MacroPointPatch, MacroState } from '@/lib/macro-api'
 
 export function createMacroState(overrides: Partial<MacroState> = {}): MacroState {
   const state: MacroState = {
@@ -44,6 +44,8 @@ export function createMacroController(overrides: Partial<MacroController> = {}):
     ...state.settings,
     hotkeys: { ...state.settings.hotkeys }
   }
+  const enabledPointCount =
+    overrides.enabledPointCount ?? state.points.filter((point) => point.enabled).length
 
   const controller: MacroController = {
     state,
@@ -67,6 +69,7 @@ export function createMacroController(overrides: Partial<MacroController> = {}):
     profileNameInputRef: { current: null },
     isEditingLocked: false,
     canStopRecording: false,
+    enabledPointCount,
     status: { label: '待命', tone: 'muted' },
     targetLoops: state.settings.loopMode === 'infinite' ? '无限' : String(state.settings.loopCount),
     updateState: vi.fn<MacroController['updateState']>().mockResolvedValue(undefined),
@@ -76,6 +79,7 @@ export function createMacroController(overrides: Partial<MacroController> = {}):
     stopHotkeyCapture: vi.fn<MacroController['stopHotkeyCapture']>(),
     captureHotkey: vi.fn<MacroController['captureHotkey']>(),
     updateDraftPoint: vi.fn<MacroController['updateDraftPoint']>(),
+    updatePoint: vi.fn<MacroController['updatePoint']>().mockResolvedValue(undefined),
     savePoint: vi.fn<MacroController['savePoint']>(),
     syncDefaultDelayToPoints: vi
       .fn<MacroController['syncDefaultDelayToPoints']>()
@@ -94,7 +98,7 @@ export function createMacroController(overrides: Partial<MacroController> = {}):
     removeActiveProfile: vi.fn<MacroController['removeActiveProfile']>()
   }
 
-  return { ...controller, ...overrides, state, draftSettings }
+  return { ...controller, ...overrides, state, draftSettings, enabledPointCount }
 }
 
 export function createMacroApi(state: MacroState = createMacroState()) {
@@ -112,7 +116,7 @@ export function createMacroApi(state: MacroState = createMacroState()) {
     ),
     setKeyCapture: vi.fn(async (_enabled: boolean) => undefined),
     syncPointDelays: vi.fn(async () => state),
-    updatePoint: vi.fn(async (_id: string, _patch: Partial<MacroState['points'][number]>) => state),
+    updatePoint: vi.fn(async (_id: string, _patch: MacroPointPatch) => state),
     movePoint: vi.fn(async (_id: string, _direction: 'up' | 'down') => state),
     reorderPoint: vi.fn(async (_id: string, _targetIndex: number) => state),
     testPoint: vi.fn(async (_id: string) => state),

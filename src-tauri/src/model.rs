@@ -11,10 +11,11 @@ pub const PROFILE_FILE_NAME: &str = "macro-profiles.json";
 
 static ID_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum PointAction {
     Click,
+    DoubleClick,
     Key,
 }
 
@@ -49,6 +50,8 @@ pub struct Point {
     pub id: String,
     pub label: String,
     pub action: PointAction,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
     pub x: i32,
     pub y: i32,
     pub key: String,
@@ -146,6 +149,8 @@ pub struct MacroState {
 #[serde(rename_all = "camelCase")]
 pub struct PointPatch {
     pub label: Option<String>,
+    pub action: Option<PointAction>,
+    pub enabled: Option<bool>,
     pub x: Option<f64>,
     pub y: Option<f64>,
     pub key: Option<String>,
@@ -174,6 +179,10 @@ pub struct SettingsPatch {
 
 pub fn now_millis() -> i64 {
     Utc::now().timestamp_millis()
+}
+
+fn default_enabled() -> bool {
+    true
 }
 
 pub fn create_id() -> String {
@@ -393,14 +402,14 @@ pub fn sanitize_profile_name(value: Option<&Value>, fallback: &str) -> String {
 
 pub fn sanitize_point(value: &Value, index: usize) -> Option<Point> {
     let object = value.as_object()?;
-    let action = if object.get("action").and_then(Value::as_str) == Some("key") {
-        PointAction::Key
-    } else {
-        PointAction::Click
+    let action = match object.get("action").and_then(Value::as_str) {
+        Some("key") => PointAction::Key,
+        Some("doubleClick") => PointAction::DoubleClick,
+        _ => PointAction::Click,
     };
     let x = finite_number(object.get("x"));
     let y = finite_number(object.get("y"));
-    if action == PointAction::Click && (x.is_none() || y.is_none()) {
+    if action != PointAction::Key && (x.is_none() || y.is_none()) {
         return None;
     }
 
@@ -421,6 +430,10 @@ pub fn sanitize_point(value: &Value, index: usize) -> Option<Point> {
             .map(|value| truncate_chars(value, 60))
             .unwrap_or_else(|| format!("步骤 {}", index + 1)),
         action,
+        enabled: object
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or_else(default_enabled),
         x: clamp_f64(x.unwrap_or(0.0), 0.0, -100_000.0, 100_000.0).round() as i32,
         y: clamp_f64(y.unwrap_or(0.0), 0.0, -100_000.0, 100_000.0).round() as i32,
         key,
@@ -733,6 +746,8 @@ mod tests {
         let profile = &store.profiles[0];
         assert_eq!(profile.name, "旧方案");
         assert_eq!(profile.points.len(), 2);
+        assert!(profile.points[0].enabled);
+        assert!(profile.points[1].enabled);
         assert_eq!(profile.points[0].x, 121);
         assert_eq!(profile.points[0].y, -42);
         assert_eq!(profile.points[0].delay_seconds, 3600.0);
@@ -747,6 +762,68 @@ mod tests {
         assert_eq!(profile.settings.loop_count, 9999);
         assert_eq!(profile.settings.hotkeys.capture, "CommandOrControl+Alt+Q");
         assert_eq!(store.appearance, default_appearance());
+    }
+
+    #[test]
+    fn point_actions_and_enabled_state_are_compatible_and_round_trip() {
+        let double_click = sanitize_point(
+            &json!({
+                "id": "double-click",
+                "label": "双击",
+                "action": "doubleClick",
+                "enabled": false,
+                "x": -320,
+                "y": 240,
+                "delaySeconds": 0.5,
+                "createdAt": 123
+            }),
+            0,
+        )
+        .expect("valid double-click point");
+        assert_eq!(double_click.action, PointAction::DoubleClick);
+        assert!(!double_click.enabled);
+        assert_eq!((double_click.x, double_click.y), (-320, 240));
+
+        let serialized = serde_json::to_value(&double_click).expect("serialize point");
+        assert_eq!(serialized["action"], "doubleClick");
+        assert_eq!(serialized["enabled"], false);
+        let deserialized: Point =
+            serde_json::from_value(serialized).expect("deserialize serialized point");
+        assert_eq!(deserialized, double_click);
+
+        let legacy: Point = serde_json::from_value(json!({
+            "id": "legacy",
+            "label": "旧步骤",
+            "action": "click",
+            "x": 1,
+            "y": 2,
+            "key": "",
+            "modifiers": [],
+            "delaySeconds": 0.5,
+            "createdAt": 123
+        }))
+        .expect("deserialize legacy point");
+        assert!(legacy.enabled);
+
+        let invalid_enabled = sanitize_point(
+            &json!({
+                "action": "click",
+                "enabled": "false",
+                "x": 1,
+                "y": 2
+            }),
+            1,
+        )
+        .expect("sanitize click point");
+        assert!(invalid_enabled.enabled);
+
+        assert!(
+            sanitize_point(
+                &json!({ "action": "doubleClick", "x": "invalid", "y": 2 }),
+                2
+            )
+            .is_none()
+        );
     }
 
     #[test]

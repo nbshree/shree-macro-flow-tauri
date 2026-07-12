@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { MacroAPI, MacroState } from '../lib/macro-api'
+import type { MacroAPI, MacroPointPatch, MacroState } from '../lib/macro-api'
 import { emptyState, useMacroController } from './useMacroController'
 
 function createState(): MacroState {
@@ -40,6 +40,16 @@ function installMacroApi(initialState: MacroState) {
       }
       stateListener?.(currentState)
       return currentState
+    }),
+    updatePoint: vi.fn(async (id: string, patch: MacroPointPatch) => {
+      currentState = {
+        ...currentState,
+        points: currentState.points.map((point) =>
+          point.id === id ? { ...point, ...patch } : point
+        )
+      }
+      stateListener?.(currentState)
+      return currentState
     })
   } as unknown as MacroAPI
 
@@ -64,6 +74,7 @@ describe('useMacroController', () => {
         id: 'point-1',
         label: '原步骤',
         action: 'click',
+        enabled: true,
         x: 10,
         y: 20,
         key: '',
@@ -95,6 +106,101 @@ describe('useMacroController', () => {
     expect(result.current.draftSettings.clickIntervalSeconds).toBe(2.5)
     expect(result.current.draftPoints['point-1'].label).toBe('未保存步骤名')
     expect(result.current.profileNameInput).toBe('未保存方案名')
+
+    unmount()
+  })
+
+  it('preserves dirty drafts when an enabled or action patch is applied immediately', async () => {
+    const initialState = createState()
+    initialState.points = [
+      {
+        id: 'point-1',
+        label: '原步骤一',
+        action: 'click',
+        enabled: true,
+        x: 10,
+        y: 20,
+        key: '',
+        modifiers: [],
+        delaySeconds: 0.5,
+        createdAt: 1
+      },
+      {
+        id: 'point-2',
+        label: '原步骤二',
+        action: 'click',
+        enabled: true,
+        x: 30,
+        y: 40,
+        key: '',
+        modifiers: [],
+        delaySeconds: 0.5,
+        createdAt: 2
+      }
+    ]
+    const api = installMacroApi(initialState)
+    const { result, unmount } = renderHook(() => useMacroController())
+
+    await waitFor(() => expect(result.current.state.points).toHaveLength(2))
+
+    act(() => {
+      result.current.setDraftSettings((current) => ({
+        ...current,
+        loopIntervalSeconds: 2.5
+      }))
+      result.current.updateDraftPoint('point-1', { label: '未保存步骤一' })
+      result.current.updateDraftPoint('point-2', { delaySeconds: 3.5 })
+    })
+
+    await act(async () => {
+      await result.current.updatePoint('point-1', {
+        action: 'doubleClick',
+        enabled: false
+      })
+    })
+
+    expect(api.updatePoint).toHaveBeenCalledWith('point-1', {
+      action: 'doubleClick',
+      enabled: false
+    })
+    expect(result.current.state.points[0]).toMatchObject({
+      action: 'doubleClick',
+      enabled: false
+    })
+    expect(result.current.draftSettings.loopIntervalSeconds).toBe(2.5)
+    expect(result.current.draftPoints['point-1']).toMatchObject({
+      label: '未保存步骤一',
+      action: 'doubleClick',
+      enabled: false
+    })
+    expect(result.current.draftPoints['point-2'].delaySeconds).toBe(3.5)
+
+    unmount()
+  })
+
+  it('reports all-disabled status and enabled point count', async () => {
+    const initialState = createState()
+    initialState.points = [
+      {
+        id: 'point-1',
+        label: '禁用步骤',
+        action: 'click',
+        enabled: false,
+        x: 10,
+        y: 20,
+        key: '',
+        modifiers: [],
+        delaySeconds: 0.5,
+        createdAt: 1
+      }
+    ]
+    installMacroApi(initialState)
+    const { result, unmount } = renderHook(() => useMacroController())
+
+    await waitFor(() => expect(result.current.state.points).toHaveLength(1))
+
+    expect(result.current.enabledPointCount).toBe(0)
+    expect(result.current.status).toEqual({ label: '全部禁用', tone: 'muted' })
 
     unmount()
   })

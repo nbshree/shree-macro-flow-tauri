@@ -9,7 +9,8 @@ type ControlPanelProps = {
 }
 
 export function ControlPanel({ controller }: ControlPanelProps) {
-  const { canStopRecording, isEditingLocked, state, targetLoops, updateState } = controller
+  const { canStopRecording, enabledPointCount, isEditingLocked, state, targetLoops, updateState } =
+    controller
 
   return (
     <section className="ui-panel sidebar-panel" aria-labelledby="control-panel-title">
@@ -57,7 +58,7 @@ export function ControlPanel({ controller }: ControlPanelProps) {
           停止录制
         </Button>
         <Button
-          disabled={isEditingLocked || state.points.length === 0}
+          disabled={isEditingLocked || enabledPointCount === 0}
           type="button"
           onClick={() => void updateState(window.api.startRun())}
         >

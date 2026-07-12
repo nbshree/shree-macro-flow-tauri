@@ -2,10 +2,13 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
+export type MacroPointAction = 'click' | 'doubleClick' | 'key'
+
 export type MacroPoint = {
   id: string
   label: string
-  action: 'click' | 'key'
+  action: MacroPointAction
+  enabled: boolean
   x: number
   y: number
   key: string
@@ -13,6 +16,13 @@ export type MacroPoint = {
   delaySeconds: number
   createdAt: number
 }
+
+export type MacroPointPatch = Partial<
+  Pick<
+    MacroPoint,
+    'label' | 'action' | 'enabled' | 'x' | 'y' | 'key' | 'modifiers' | 'delaySeconds'
+  >
+>
 
 export type MacroSettings = {
   clickIntervalSeconds: number
@@ -81,7 +91,7 @@ export type MacroAPI = {
   addKeyPoint: (key: string, modifiers: MacroPoint['modifiers']) => Promise<MacroState>
   setKeyCapture: (enabled: boolean) => Promise<void>
   syncPointDelays: () => Promise<MacroState>
-  updatePoint: (id: string, patch: Partial<MacroPoint>) => Promise<MacroState>
+  updatePoint: (id: string, patch: MacroPointPatch) => Promise<MacroState>
   movePoint: (id: string, direction: 'up' | 'down') => Promise<MacroState>
   reorderPoint: (id: string, targetIndex: number) => Promise<MacroState>
   testPoint: (id: string) => Promise<MacroState>

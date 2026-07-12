@@ -150,6 +150,7 @@ pub fn add_key_point(
                 id: create_id(),
                 label: format!("按键 {order}"),
                 action: PointAction::Key,
+                enabled: true,
                 x: 0,
                 y: 0,
                 key: normalized_key.clone(),
@@ -212,6 +213,7 @@ pub fn update_point(
     patch: PointPatch,
 ) -> MacroState {
     let mut invalid_key = false;
+    let mut invalid_action = false;
     {
         let mut inner = state.lock();
         if !can_edit_flow(&inner) {
@@ -219,43 +221,56 @@ pub fn update_point(
         }
         let hotkeys = inner.state.settings.hotkeys.clone();
         if let Some(point) = inner.state.points.iter_mut().find(|point| point.id == id) {
-            let key = patch
-                .key
-                .as_deref()
-                .map(normalize_key)
-                .unwrap_or_else(|| point.key.clone());
-            let modifiers = patch
-                .modifiers
-                .map(sanitize_modifier_list)
-                .unwrap_or_else(|| point.modifiers.clone());
-            if point.action == PointAction::Key
-                && (virtual_key_code(&key).is_none()
-                    || key_step_conflicts_with_hotkey(&key, &modifiers, &hotkeys))
-            {
-                invalid_key = true;
+            let action = patch.action.unwrap_or(point.action);
+            if !can_change_point_action(point.action, action) {
+                invalid_action = true;
             } else {
-                if let Some(label) = patch.label {
-                    point.label = truncate_chars(&label, 60);
-                }
-                if let Some(x) = patch.x {
-                    point.x = clamp_f64(x, point.x as f64, -100_000.0, 100_000.0).round() as i32;
-                }
-                if let Some(y) = patch.y {
-                    point.y = clamp_f64(y, point.y as f64, -100_000.0, 100_000.0).round() as i32;
-                }
-                point.key = key;
-                point.modifiers = modifiers;
-                if let Some(delay_seconds) = patch.delay_seconds {
-                    point.delay_seconds =
-                        clamp_f64(delay_seconds, point.delay_seconds, 0.1, 3600.0);
+                let key = patch
+                    .key
+                    .as_deref()
+                    .map(normalize_key)
+                    .unwrap_or_else(|| point.key.clone());
+                let modifiers = patch
+                    .modifiers
+                    .map(sanitize_modifier_list)
+                    .unwrap_or_else(|| point.modifiers.clone());
+                if action == PointAction::Key
+                    && (virtual_key_code(&key).is_none()
+                        || key_step_conflicts_with_hotkey(&key, &modifiers, &hotkeys))
+                {
+                    invalid_key = true;
+                } else {
+                    if let Some(label) = patch.label {
+                        point.label = truncate_chars(&label, 60);
+                    }
+                    point.action = action;
+                    if let Some(enabled) = patch.enabled {
+                        point.enabled = enabled;
+                    }
+                    if let Some(x) = patch.x {
+                        point.x =
+                            clamp_f64(x, point.x as f64, -100_000.0, 100_000.0).round() as i32;
+                    }
+                    if let Some(y) = patch.y {
+                        point.y =
+                            clamp_f64(y, point.y as f64, -100_000.0, 100_000.0).round() as i32;
+                    }
+                    point.key = key;
+                    point.modifiers = modifiers;
+                    if let Some(delay_seconds) = patch.delay_seconds {
+                        point.delay_seconds =
+                            clamp_f64(delay_seconds, point.delay_seconds, 0.1, 3600.0);
+                    }
                 }
             }
         }
     }
-    if invalid_key {
+    if invalid_action {
+        state.log(&app, "更新步骤失败：键盘步骤与鼠标步骤不能互相转换")
+    } else if invalid_key {
         state.log(&app, "更新键盘步骤失败：按键无效或与应用全局热键冲突")
     } else {
-        finish_flow_edit(&app, &state, "更新坐标")
+        finish_flow_edit(&app, &state, "更新步骤")
     }
 }
 
@@ -332,23 +347,28 @@ pub fn test_point(app: AppHandle, state: State<'_, AppState>, id: String) -> Mac
             .state
             .points
             .iter()
-            .find(|point| point.id == id && point.action == PointAction::Click)
+            .find(|point| point.id == id && point.action != PointAction::Key)
             .cloned()
     };
     let Some(point) = point else {
         return state.snapshot();
     };
-    match input::click(point.x, point.y) {
+    let (result, action_label) = match point.action {
+        PointAction::Click => (input::click(point.x, point.y), "点击"),
+        PointAction::DoubleClick => (input::double_click(point.x, point.y), "双击"),
+        PointAction::Key => unreachable!("keyboard points were filtered out"),
+    };
+    match result {
         Ok(()) => state.log(
             &app,
             format!(
-                "测试点击 {} ({}, {})",
+                "测试{action_label} {} ({}, {})",
                 unnamed_label(&point.label),
                 point.x,
                 point.y
             ),
         ),
-        Err(error) => state.log(&app, format!("测试点击失败：{error}")),
+        Err(error) => state.log(&app, format!("测试{action_label}失败：{error}")),
     }
 }
 
@@ -681,6 +701,7 @@ pub(crate) fn capture_point_internal(app: &AppHandle) -> MacroState {
             id: create_id(),
             label: format!("步骤 {order}"),
             action: PointAction::Click,
+            enabled: true,
             x,
             y,
             key: String::new(),
@@ -698,12 +719,12 @@ pub(crate) fn start_run_internal(app: &AppHandle) -> MacroState {
     let state = app.state::<AppState>();
     let result = {
         let mut inner = state.lock();
-        if inner.state.is_recording {
-            Err("录制中不能开始执行")
-        } else if inner.state.points.is_empty() {
-            Err("无法开始：流程步骤为空")
-        } else if inner.state.is_running {
-            Err("已在执行中")
+        if let Err(message) = validate_run_start(
+            inner.state.is_recording,
+            inner.state.is_running,
+            &inner.state.points,
+        ) {
+            Err(message)
         } else {
             inner.state.is_recording = false;
             inner.state.is_running = true;
@@ -751,8 +772,12 @@ fn run_macro(app: AppHandle, token: u64) {
     }
 
     while is_current_run(&app, token) {
-        let point_count = app.state::<AppState>().lock().state.points.len();
-        for index in 0..point_count {
+        let point_indices = {
+            let state = app.state::<AppState>();
+            let inner = state.lock();
+            enabled_point_indices(&inner.state.points)
+        };
+        for index in point_indices {
             let point = {
                 let state = app.state::<AppState>();
                 let mut inner = state.lock();
@@ -772,6 +797,7 @@ fn run_macro(app: AppHandle, token: u64) {
             let result = match point.action {
                 PointAction::Key => input::key(&point.key, &point.modifiers),
                 PointAction::Click => input::click(point.x, point.y),
+                PointAction::DoubleClick => input::double_click(point.x, point.y),
             };
             let state = app.state::<AppState>();
             match result {
@@ -792,6 +818,18 @@ fn run_macro(app: AppHandle, token: u64) {
                             &app,
                             format!(
                                 "点击 #{} {} ({}, {})",
+                                index + 1,
+                                unnamed_label(&point.label),
+                                point.x,
+                                point.y
+                            ),
+                        );
+                    }
+                    PointAction::DoubleClick => {
+                        state.log(
+                            &app,
+                            format!(
+                                "双击 #{} {} ({}, {})",
                                 index + 1,
                                 unnamed_label(&point.label),
                                 point.x,
@@ -926,6 +964,36 @@ fn can_edit(state: &AppState) -> bool {
     can_edit_flow(&state.lock())
 }
 
+fn can_change_point_action(current: PointAction, next: PointAction) -> bool {
+    current == next || (current != PointAction::Key && next != PointAction::Key)
+}
+
+fn validate_run_start(
+    is_recording: bool,
+    is_running: bool,
+    points: &[Point],
+) -> Result<(), &'static str> {
+    if is_recording {
+        Err("录制中不能开始执行")
+    } else if points.is_empty() {
+        Err("无法开始：流程步骤为空")
+    } else if !points.iter().any(|point| point.enabled) {
+        Err("无法开始：全部流程步骤已禁用")
+    } else if is_running {
+        Err("已在执行中")
+    } else {
+        Ok(())
+    }
+}
+
+fn enabled_point_indices(points: &[Point]) -> Vec<usize> {
+    points
+        .iter()
+        .enumerate()
+        .filter_map(|(index, point)| point.enabled.then_some(index))
+        .collect()
+}
+
 fn unnamed_label(label: &str) -> &str {
     if label.is_empty() { "未命名" } else { label }
 }
@@ -969,6 +1037,7 @@ mod tests {
             id: id.into(),
             label: id.into(),
             action: PointAction::Click,
+            enabled: true,
             x: 0,
             y: 0,
             key: String::new(),
@@ -1004,5 +1073,42 @@ mod tests {
     fn exported_file_name_removes_windows_reserved_characters() {
         assert_eq!(safe_file_name("a:b/c*"), "a_b_c_");
         assert_eq!(safe_file_name("..."), DEFAULT_IMPORT_NAME);
+    }
+
+    #[test]
+    fn action_changes_only_allow_mouse_variants_to_convert() {
+        assert!(can_change_point_action(
+            PointAction::Click,
+            PointAction::DoubleClick
+        ));
+        assert!(can_change_point_action(
+            PointAction::DoubleClick,
+            PointAction::Click
+        ));
+        assert!(can_change_point_action(PointAction::Key, PointAction::Key));
+        assert!(!can_change_point_action(
+            PointAction::Click,
+            PointAction::Key
+        ));
+        assert!(!can_change_point_action(
+            PointAction::Key,
+            PointAction::DoubleClick
+        ));
+    }
+
+    #[test]
+    fn disabled_points_cannot_start_and_are_filtered_with_original_indices() {
+        let mut points = vec![point("a"), point("b"), point("c")];
+        for point in &mut points {
+            point.enabled = false;
+        }
+        assert_eq!(
+            validate_run_start(false, false, &points),
+            Err("无法开始：全部流程步骤已禁用")
+        );
+
+        points[1].enabled = true;
+        assert_eq!(validate_run_start(false, false, &points), Ok(()));
+        assert_eq!(enabled_point_indices(&points), vec![1]);
     }
 }

@@ -4,6 +4,8 @@ import { formatKeyStep, type MacroController } from '../../hooks/useMacroControl
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import { Switch } from '../ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 
 type FlowPanelProps = {
@@ -30,6 +32,7 @@ export function FlowPanel({ controller }: FlowPanelProps) {
     setDraggingPointId,
     state,
     updateDraftPoint,
+    updatePoint,
     updateState
   } = controller
 
@@ -41,7 +44,9 @@ export function FlowPanel({ controller }: FlowPanelProps) {
             <ListChecks aria-hidden="true" size={18} />
             流程步骤
           </h2>
-          <p>{state.points.length} 个步骤，拖拽手柄调整顺序</p>
+          <p>
+            总步骤 {state.points.length} / 启用 {controller.enabledPointCount}，拖拽手柄调整顺序
+          </p>
         </div>
         <div className="flow-panel__actions">
           <Button
@@ -109,6 +114,9 @@ export function FlowPanel({ controller }: FlowPanelProps) {
             <div className="flow-grid flow-table__head" role="row">
               <span role="columnheader">序号</span>
               <span role="columnheader">名称</span>
+              <span className="flow-enabled-heading" role="columnheader">
+                启用
+              </span>
               <span role="columnheader">动作</span>
               <span role="columnheader">参数</span>
               <span role="columnheader">等待 s</span>
@@ -118,11 +126,13 @@ export function FlowPanel({ controller }: FlowPanelProps) {
             <div role="rowgroup">
               {state.points.map((point, index) => {
                 const draft = draftPoints[point.id] ?? point
+                const mouseActionLabel = point.action === 'doubleClick' ? '鼠标双击' : '鼠标单击'
                 return (
                   <div
                     className="flow-grid flow-table__row"
                     data-active={String(state.currentIndex === index)}
                     data-dragging={String(draggingPointId === point.id)}
+                    data-enabled={String(draft.enabled)}
                     key={point.id}
                     role="row"
                     onDragOver={(event) => {
@@ -170,10 +180,43 @@ export function FlowPanel({ controller }: FlowPanelProps) {
                       />
                     </div>
 
+                    <div className="flow-enabled-cell" role="cell">
+                      <Switch
+                        aria-label={`步骤 ${index + 1} 启用状态`}
+                        checked={draft.enabled}
+                        disabled={isEditingLocked}
+                        onCheckedChange={(enabled) => void updatePoint(point.id, { enabled })}
+                      />
+                    </div>
+
                     <div role="cell">
-                      <Badge className="action-badge" data-action={point.action} variant="ghost">
-                        {point.action === 'key' ? '键盘按键' : '鼠标点击'}
-                      </Badge>
+                      {point.action === 'key' ? (
+                        <Badge className="action-badge" data-action="key" variant="ghost">
+                          键盘按键
+                        </Badge>
+                      ) : (
+                        <Select
+                          disabled={isEditingLocked}
+                          value={draft.action}
+                          onValueChange={(action) => {
+                            if (action === 'click' || action === 'doubleClick') {
+                              void updatePoint(point.id, { action })
+                            }
+                          }}
+                        >
+                          <SelectTrigger
+                            aria-label={`步骤 ${index + 1} 鼠标动作`}
+                            className="flow-action-select"
+                            size="compact"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="click">鼠标单击</SelectItem>
+                            <SelectItem value="doubleClick">鼠标双击</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
 
                     <div role="cell">
@@ -251,11 +294,11 @@ export function FlowPanel({ controller }: FlowPanelProps) {
                     </div>
 
                     <div className="flow-row-actions" role="cell">
-                      {point.action === 'click' ? (
+                      {point.action !== 'key' ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
-                              aria-label={`测试步骤 ${index + 1} 点击`}
+                              aria-label={`测试步骤 ${index + 1} ${mouseActionLabel}`}
                               disabled={isEditingLocked}
                               size="icon-compact"
                               type="button"
@@ -266,7 +309,7 @@ export function FlowPanel({ controller }: FlowPanelProps) {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent side="top" sideOffset={6}>
-                            测试点击
+                            测试{mouseActionLabel}
                           </TooltipContent>
                         </Tooltip>
                       ) : null}
