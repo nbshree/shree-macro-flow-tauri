@@ -10,7 +10,8 @@ mod platform {
             HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext},
             Input::KeyboardAndMouse::{
                 INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY,
-                KEYEVENTF_KEYUP, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEINPUT, SendInput,
+                KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MAPVK_VK_TO_VSC_EX, MOUSEEVENTF_LEFTDOWN,
+                MOUSEEVENTF_LEFTUP, MOUSEINPUT, MapVirtualKeyW, SendInput,
             },
             WindowsAndMessaging::{GetCursorPos, SetCursorPos},
         },
@@ -58,13 +59,7 @@ mod platform {
         let mut codes = modifier_codes;
         codes.push(key_code);
 
-        let mut inputs = Vec::with_capacity(codes.len() * 2);
-        for code in &codes {
-            inputs.push(keyboard_input(*code, false));
-        }
-        for code in codes.iter().rev() {
-            inputs.push(keyboard_input(*code, true));
-        }
+        let inputs = keyboard_inputs(&codes, map_virtual_key_to_scan_code);
         if let Err(error) = send_inputs(&inputs) {
             // SendInput may have accepted only a prefix (for example, modifiers but not the main
             // key). Best-effort releases avoid leaving Ctrl/Alt/Shift logically held down.
@@ -145,7 +140,56 @@ mod platform {
         }
     }
 
+    fn keyboard_inputs<MapScan>(codes: &[u16], map_scan: MapScan) -> Vec<INPUT>
+    where
+        MapScan: Fn(u16) -> u32,
+    {
+        let mut inputs = Vec::with_capacity(codes.len() * 2);
+        for code in codes {
+            inputs.push(keyboard_input_with_scan_code(*code, false, map_scan(*code)));
+        }
+        for code in codes.iter().rev() {
+            inputs.push(keyboard_input_with_scan_code(*code, true, map_scan(*code)));
+        }
+        inputs
+    }
+
     fn keyboard_input(code: u16, key_up: bool) -> INPUT {
+        keyboard_input_with_scan_code(code, key_up, map_virtual_key_to_scan_code(code))
+    }
+
+    fn keyboard_input_with_scan_code(code: u16, key_up: bool, mapped_scan_code: u32) -> INPUT {
+        let prefix = (mapped_scan_code >> 8) & 0xff;
+        let scan_code = (mapped_scan_code & 0xff) as u16;
+
+        // MAPVK_VK_TO_VSC_EX returns an E0/E1 prefix in the high byte. SendInput represents E0
+        // using KEYEVENTF_EXTENDEDKEY. E1-prefixed keys (notably Pause) need a special sequence,
+        // so retain the proven virtual-key path for those and for unmappable keys.
+        if scan_code == 0 || prefix == 0xe1 {
+            return virtual_key_input(code, key_up);
+        }
+
+        let mut flags = KEYEVENTF_SCANCODE;
+        if prefix == 0xe0 {
+            flags |= KEYEVENTF_EXTENDEDKEY;
+        }
+        if key_up {
+            flags |= KEYEVENTF_KEYUP;
+        }
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: 0,
+                    wScan: scan_code,
+                    dwFlags: flags,
+                    ..Default::default()
+                },
+            },
+        }
+    }
+
+    fn virtual_key_input(code: u16, key_up: bool) -> INPUT {
         let mut flags = if is_extended_key(code) {
             KEYEVENTF_EXTENDEDKEY
         } else {
@@ -164,6 +208,10 @@ mod platform {
                 },
             },
         }
+    }
+
+    fn map_virtual_key_to_scan_code(code: u16) -> u32 {
+        unsafe { MapVirtualKeyW(code as u32, MAPVK_VK_TO_VSC_EX) }
     }
 
     fn is_extended_key(code: u16) -> bool {
@@ -217,6 +265,63 @@ mod platform {
                 .iter()
                 .map(|input| unsafe { input.Anonymous.mi.dwFlags })
                 .collect()
+        }
+
+        fn keyboard_fields(input: &INPUT) -> (u16, u16, u32) {
+            let keyboard = unsafe { input.Anonymous.ki };
+            (keyboard.wVk, keyboard.wScan, keyboard.dwFlags)
+        }
+
+        #[test]
+        fn mapped_keys_use_scan_codes_for_press_and_release() {
+            let pressed = keyboard_input_with_scan_code(0x41, false, 0x001e);
+            let released = keyboard_input_with_scan_code(0x41, true, 0x001e);
+
+            assert_eq!(keyboard_fields(&pressed), (0, 0x1e, KEYEVENTF_SCANCODE));
+            assert_eq!(
+                keyboard_fields(&released),
+                (0, 0x1e, KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP)
+            );
+        }
+
+        #[test]
+        fn extended_scan_codes_set_extended_flag() {
+            for code in [0x25, 0x2e] {
+                let input = keyboard_input_with_scan_code(code, false, 0xe04b);
+                assert_eq!(
+                    keyboard_fields(&input),
+                    (0, 0x4b, KEYEVENTF_SCANCODE | KEYEVENTF_EXTENDEDKEY)
+                );
+            }
+        }
+
+        #[test]
+        fn unmappable_and_e1_keys_fall_back_to_virtual_keys() {
+            let unmappable = keyboard_input_with_scan_code(0x87, false, 0);
+            let pause = keyboard_input_with_scan_code(0x13, false, 0xe11d);
+
+            assert_eq!(keyboard_fields(&unmappable), (0x87, 0, 0));
+            assert_eq!(keyboard_fields(&pause), (0x13, 0, 0));
+        }
+
+        #[test]
+        fn modifiers_press_before_main_key_and_release_in_reverse() {
+            let inputs = keyboard_inputs(&[0x11, 0x12, 0x10, 0x41], |code| code as u32);
+            let events = inputs.iter().map(keyboard_fields).collect::<Vec<_>>();
+
+            assert_eq!(
+                events,
+                vec![
+                    (0, 0x11, KEYEVENTF_SCANCODE),
+                    (0, 0x12, KEYEVENTF_SCANCODE),
+                    (0, 0x10, KEYEVENTF_SCANCODE),
+                    (0, 0x41, KEYEVENTF_SCANCODE),
+                    (0, 0x41, KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP),
+                    (0, 0x10, KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP),
+                    (0, 0x12, KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP),
+                    (0, 0x11, KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP),
+                ]
+            );
         }
 
         #[test]
