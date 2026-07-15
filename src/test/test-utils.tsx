@@ -130,15 +130,18 @@ export function createMacroApi(state: MacroState = createMacroState()) {
     importProfile: vi.fn(async () => state),
     getMysteryCodeStatus: vi.fn<MacroAPI['getMysteryCodeStatus']>(async () => ({
       configured: false,
-      lastFour: null
+      lastFour: null,
+      baseUrl: 'https://gzxsy.vip'
     })),
     saveAndValidateMysteryCode: vi.fn<MacroAPI['saveAndValidateMysteryCode']>(async () => ({
       configured: true,
-      lastFour: '1234'
+      lastFour: '1234',
+      baseUrl: 'https://gzxsy.vip'
     })),
     deleteMysteryCode: vi.fn<MacroAPI['deleteMysteryCode']>(async () => ({
       configured: false,
-      lastFour: null
+      lastFour: null,
+      baseUrl: 'https://gzxsy.vip'
     })),
     recognizeInternalSkillImage: vi.fn<MacroAPI['recognizeInternalSkillImage']>(async () => ({
       baseStats: {

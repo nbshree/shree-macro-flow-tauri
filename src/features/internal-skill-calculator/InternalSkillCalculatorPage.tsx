@@ -202,6 +202,8 @@ const optimizeImageToDataUrl = async (file: File) => {
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error || '操作失败，请重试。')
 
+const defaultAiBaseUrl = 'https://gzxsy.vip'
+
 type InternalSkillCalculatorPageProps = {
   active?: boolean
   api?: Pick<
@@ -220,10 +222,12 @@ export function InternalSkillCalculatorPage({
   const [calculatorInput, setCalculatorInput] = useState<CalculatorInput>(createEmptyInput)
   const [credentialStatus, setCredentialStatus] = useState<MysteryCodeStatus>({
     configured: false,
-    lastFour: null
+    lastFour: null,
+    baseUrl: defaultAiBaseUrl
   })
   const [credentialDialogOpen, setCredentialDialogOpen] = useState(false)
   const [mysteryCodeDraft, setMysteryCodeDraft] = useState('')
+  const [baseUrlDraft, setBaseUrlDraft] = useState(defaultAiBaseUrl)
   const [showMysteryCode, setShowMysteryCode] = useState(false)
   const [credentialBusy, setCredentialBusy] = useState(false)
   const [credentialError, setCredentialError] = useState('')
@@ -383,6 +387,7 @@ export function InternalSkillCalculatorPage({
 
   const openCredentialDialog = () => {
     setMysteryCodeDraft('')
+    setBaseUrlDraft(credentialStatus.baseUrl)
     setCredentialError('')
     setShowMysteryCode(false)
     setCredentialDialogOpen(true)
@@ -396,7 +401,7 @@ export function InternalSkillCalculatorPage({
     setCredentialBusy(true)
     setCredentialError('')
     try {
-      const status = await api.saveAndValidateMysteryCode(mysteryCodeDraft)
+      const status = await api.saveAndValidateMysteryCode(mysteryCodeDraft, baseUrlDraft)
       setCredentialStatus(status)
       setMysteryCodeDraft('')
       setCredentialDialogOpen(false)
@@ -850,6 +855,22 @@ export function InternalSkillCalculatorPage({
                     : '使用 GPT-5.6 Terra 图片理解模型'}
                 </span>
               </div>
+            </div>
+
+            <div className="calculator-ai-key-field">
+              <Label htmlFor="ai-base-url">Base URL</Label>
+              <Input
+                id="ai-base-url"
+                type="url"
+                value={baseUrlDraft}
+                disabled={credentialBusy}
+                autoComplete="url"
+                placeholder={defaultAiBaseUrl}
+                onChange={(event) => setBaseUrlDraft(event.currentTarget.value)}
+              />
+              <small>
+                默认 {defaultAiBaseUrl}，请求会发送到 Base URL 下的 /v1/responses。
+              </small>
             </div>
 
             <div className="calculator-ai-key-field">

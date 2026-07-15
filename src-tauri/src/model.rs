@@ -7,6 +7,7 @@ use serde_json::{Map, Value};
 pub const EMERGENCY_STOP_HOTKEY: &str = "CommandOrControl+Alt+Esc";
 pub const DEFAULT_PROFILE_NAME: &str = "默认方案";
 pub const DEFAULT_THEME_ID: &str = "longyin";
+pub const DEFAULT_AI_BASE_URL: &str = "https://gzxsy.vip";
 pub const PROFILE_FILE_NAME: &str = "macro-profiles.json";
 
 static ID_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -128,6 +129,8 @@ pub struct PersistedData {
     pub appearance: AppearancePreferences,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mystery_code: Option<String>,
+    #[serde(default = "default_ai_base_url")]
+    pub ai_base_url: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -214,6 +217,10 @@ pub fn default_appearance() -> AppearancePreferences {
     }
 }
 
+pub fn default_ai_base_url() -> String {
+    DEFAULT_AI_BASE_URL.into()
+}
+
 pub fn create_default_profile_store() -> PersistedData {
     let now = now_millis();
     let profile = MacroProfile {
@@ -230,6 +237,7 @@ pub fn create_default_profile_store() -> PersistedData {
         profiles: vec![profile],
         appearance: default_appearance(),
         mystery_code: None,
+        ai_base_url: default_ai_base_url(),
     }
 }
 
@@ -300,11 +308,19 @@ pub fn sanitize_persisted(value: &Value) -> PersistedData {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
+    let ai_base_url = object
+        .get("aiBaseUrl")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.trim_end_matches('/').to_string())
+        .unwrap_or_else(default_ai_base_url);
 
     if profiles.is_empty() {
         let mut store = create_default_profile_store();
         store.appearance = appearance;
         store.mystery_code = mystery_code;
+        store.ai_base_url = ai_base_url;
         return store;
     }
 
@@ -324,6 +340,7 @@ pub fn sanitize_persisted(value: &Value) -> PersistedData {
         profiles,
         appearance,
         mystery_code,
+        ai_base_url,
     }
 }
 
@@ -846,6 +863,7 @@ mod tests {
         assert_eq!(store.profiles[0].settings, default_settings());
         assert_eq!(store.appearance, default_appearance());
         assert_eq!(store.mystery_code, None);
+        assert_eq!(store.ai_base_url, DEFAULT_AI_BASE_URL);
     }
 
     #[test]
@@ -860,6 +878,22 @@ mod tests {
         assert_eq!(serialized["mysteryCode"], "shree");
         let profile = serde_json::to_value(&store.profiles[0]).expect("serialize profile");
         assert!(profile.get("mysteryCode").is_none());
+    }
+
+    #[test]
+    fn ai_base_url_defaults_and_is_persisted_globally() {
+        let default_store = sanitize_persisted(&json!({
+            "profiles": [{ "id": "profile", "name": "方案" }]
+        }));
+        assert_eq!(default_store.ai_base_url, DEFAULT_AI_BASE_URL);
+
+        let store = sanitize_persisted(&json!({
+            "profiles": [{ "id": "profile", "name": "方案" }],
+            "aiBaseUrl": "  https://example.com/  "
+        }));
+        assert_eq!(store.ai_base_url, "https://example.com");
+        let serialized = serde_json::to_value(&store).expect("serialize store");
+        assert_eq!(serialized["aiBaseUrl"], "https://example.com");
     }
 
     #[test]

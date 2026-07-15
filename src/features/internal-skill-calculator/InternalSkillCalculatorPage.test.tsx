@@ -104,10 +104,35 @@ describe('InternalSkillCalculatorPage', () => {
     await user.type(screen.getByLabelText('神秘代码'), 'shree')
     await user.click(screen.getByRole('button', { name: '保存并验证' }))
 
-    await waitFor(() => expect(api.saveAndValidateMysteryCode).toHaveBeenCalledWith('shree'))
+    await waitFor(() =>
+      expect(api.saveAndValidateMysteryCode).toHaveBeenCalledWith(
+        'shree',
+        'https://gzxsy.vip'
+      )
+    )
     expect(
       await screen.findByText('神秘代码和 GPT-5.6 Terra 识别服务验证成功并已保存。')
     ).toBeVisible()
+  })
+
+  it('allows the AI base URL to be configured', async () => {
+    const user = userEvent.setup()
+    const api = createMacroApi()
+    renderWithUiProviders(<InternalSkillCalculatorPage active api={api} />)
+
+    await user.click(screen.getByRole('button', { name: 'AI 配置' }))
+    const baseUrl = screen.getByLabelText('Base URL')
+    await user.clear(baseUrl)
+    await user.type(baseUrl, 'https://api.example.com/')
+    await user.type(screen.getByLabelText('神秘代码'), 'shree')
+    await user.click(screen.getByRole('button', { name: '保存并验证' }))
+
+    await waitFor(() =>
+      expect(api.saveAndValidateMysteryCode).toHaveBeenCalledWith(
+        'shree',
+        'https://api.example.com/'
+      )
+    )
   })
 
   it('shows an error when the mapped API key is unusable', async () => {
@@ -129,7 +154,11 @@ describe('InternalSkillCalculatorPage', () => {
   it('deletes a configured mystery code', async () => {
     const user = userEvent.setup()
     const api = createMacroApi()
-    api.getMysteryCodeStatus.mockResolvedValue({ configured: true, lastFour: 'hree' })
+    api.getMysteryCodeStatus.mockResolvedValue({
+      configured: true,
+      lastFour: 'hree',
+      baseUrl: 'https://gzxsy.vip'
+    })
     renderWithUiProviders(<InternalSkillCalculatorPage active api={api} />)
 
     await waitFor(() => expect(api.getMysteryCodeStatus).toHaveBeenCalled())
@@ -154,7 +183,11 @@ describe('InternalSkillCalculatorPage', () => {
 
   it('downscales and converts a pasted screenshot to webp before recognition', async () => {
     const api = createMacroApi()
-    api.getMysteryCodeStatus.mockResolvedValue({ configured: true, lastFour: '1234' })
+    api.getMysteryCodeStatus.mockResolvedValue({
+      configured: true,
+      lastFour: '1234',
+      baseUrl: 'https://gzxsy.vip'
+    })
     const close = vi.fn()
     vi.stubGlobal(
       'createImageBitmap',
@@ -185,7 +218,11 @@ describe('InternalSkillCalculatorPage', () => {
   it('recognizes a pasted image, overwrites the draft, and preserves spirit selections', async () => {
     const user = userEvent.setup()
     const api = createMacroApi()
-    api.getMysteryCodeStatus.mockResolvedValue({ configured: true, lastFour: '1234' })
+    api.getMysteryCodeStatus.mockResolvedValue({
+      configured: true,
+      lastFour: '1234',
+      baseUrl: 'https://gzxsy.vip'
+    })
     api.recognizeInternalSkillImage.mockResolvedValue({
       baseStats: {
         season: 8,
@@ -222,7 +259,11 @@ describe('InternalSkillCalculatorPage', () => {
   it('keeps existing values when image recognition fails', async () => {
     const user = userEvent.setup()
     const api = createMacroApi()
-    api.getMysteryCodeStatus.mockResolvedValue({ configured: true, lastFour: '1234' })
+    api.getMysteryCodeStatus.mockResolvedValue({
+      configured: true,
+      lastFour: '1234',
+      baseUrl: 'https://gzxsy.vip'
+    })
     api.recognizeInternalSkillImage.mockRejectedValue(new Error('接口超时'))
     renderWithUiProviders(<InternalSkillCalculatorPage active api={api} />)
 

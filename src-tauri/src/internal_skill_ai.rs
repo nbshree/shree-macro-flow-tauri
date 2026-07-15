@@ -6,9 +6,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tauri::{AppHandle, State};
 
-use crate::state::AppState;
+use crate::{model::DEFAULT_AI_BASE_URL, state::AppState};
 
-const RESPONSES_API_URL: &str = "https://relayai.tech/v1/responses";
 const VISION_MODEL: &str = "gpt-5.6-terra";
 const API_KEY_MAP_URL: &str = "https://license.shree52388.xyz/shree52388401163814apikeymap";
 const MAX_API_KEY_MAP_BYTES: usize = 1024 * 1024;
@@ -113,6 +112,7 @@ const SKILL_REFERENCES: [(&str, &str, &[u8]); 15] = [
 pub struct MysteryCodeStatus {
     configured: bool,
     last_four: Option<String>,
+    base_url: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -153,7 +153,7 @@ struct ApiKeyMapping {
     apikey: String,
 }
 
-fn mystery_code_status(code: Option<&str>) -> MysteryCodeStatus {
+fn mystery_code_status(code: Option<&str>, base_url: &str) -> MysteryCodeStatus {
     let last_four = code.map(|value| {
         let characters = value.chars().collect::<Vec<_>>();
         characters[characters.len().saturating_sub(4)..]
@@ -164,18 +164,23 @@ fn mystery_code_status(code: Option<&str>) -> MysteryCodeStatus {
     MysteryCodeStatus {
         configured: code.is_some(),
         last_four,
+        base_url: base_url.to_string(),
     }
 }
 
 #[tauri::command]
 pub fn get_mystery_code_status(state: State<'_, AppState>) -> MysteryCodeStatus {
     let inner = state.lock();
-    mystery_code_status(inner.store.mystery_code.as_deref())
+    mystery_code_status(
+        inner.store.mystery_code.as_deref(),
+        &inner.store.ai_base_url,
+    )
 }
 
 #[tauri::command]
 pub async fn save_and_validate_mystery_code(
     mystery_code: String,
+    base_url: String,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<MysteryCodeStatus, String> {
@@ -183,30 +188,36 @@ pub async fn save_and_validate_mystery_code(
     if normalized.is_empty() {
         return Err("请输入神秘代码。".into());
     }
+    let normalized_base_url = normalize_base_url(&base_url)?;
 
     let api_key = resolve_api_key(normalized).await?;
-    test_api_key(&api_key)
+    test_api_key(&api_key, &normalized_base_url)
         .await
         .map_err(|error| format!("神秘代码对应的 API Key 无效：{error}"))?;
     let (store, path) = {
         let mut inner = state.lock();
         inner.store.mystery_code = Some(normalized.to_string());
+        inner.store.ai_base_url = normalized_base_url.clone();
         (inner.store.clone(), inner.profile_file.clone())
     };
     state.persist_store(&app, store, path);
 
-    Ok(mystery_code_status(Some(normalized)))
+    Ok(mystery_code_status(Some(normalized), &normalized_base_url))
 }
 
 #[tauri::command]
 pub fn delete_mystery_code(app: AppHandle, state: State<'_, AppState>) -> MysteryCodeStatus {
-    let (store, path) = {
+    let (store, path, base_url) = {
         let mut inner = state.lock();
         inner.store.mystery_code = None;
-        (inner.store.clone(), inner.profile_file.clone())
+        (
+            inner.store.clone(),
+            inner.profile_file.clone(),
+            inner.store.ai_base_url.clone(),
+        )
     };
     state.persist_store(&app, store, path);
-    mystery_code_status(None)
+    mystery_code_status(None, &base_url)
 }
 
 #[tauri::command]
@@ -215,17 +226,20 @@ pub async fn recognize_internal_skill_image(
     state: State<'_, AppState>,
 ) -> Result<InternalSkillRecognitionResult, String> {
     validate_image_data_url(&image_data_url)?;
-    let mystery_code = {
+    let (mystery_code, base_url) = {
         let inner = state.lock();
-        inner
-            .store
-            .mystery_code
-            .clone()
-            .ok_or_else(|| "请先配置神秘代码。".to_string())?
+        (
+            inner
+                .store
+                .mystery_code
+                .clone()
+                .ok_or_else(|| "请先配置神秘代码。".to_string())?,
+            inner.store.ai_base_url.clone(),
+        )
     };
     let api_key = resolve_api_key(&mystery_code).await?;
     let request = recognition_request(&image_data_url);
-    let response = send_request(&api_key, request).await?;
+    let response = send_request(&api_key, &base_url, request).await?;
     let content = extract_response_text(&response)?;
     parse_recognition_content(&content)
 }
@@ -279,24 +293,30 @@ fn resolve_api_key_from_mappings(
     }
 }
 
-async fn test_api_key(api_key: &str) -> Result<(), String> {
+async fn test_api_key(api_key: &str, base_url: &str) -> Result<(), String> {
     let request = json!({
         "model": VISION_MODEL,
-        "input": "只回复 OK",
+        "input": [{
+            "role": "user",
+            "content": [{
+                "type": "input_text",
+                "text": "只回复 OK"
+            }]
+        }],
         "reasoning": { "effort": "none" },
         "max_output_tokens": 64,
         "store": false
     });
-    send_request(api_key, request).await.map(|_| ())
+    send_request(api_key, base_url, request).await.map(|_| ())
 }
 
-async fn send_request(api_key: &str, body: Value) -> Result<Value, String> {
+async fn send_request(api_key: &str, base_url: &str, body: Value) -> Result<Value, String> {
     let client = Client::builder()
         .timeout(Duration::from_secs(120))
         .build()
         .map_err(|error| format!("初始化 AI 识别客户端失败：{error}"))?;
     let response = client
-        .post(RESPONSES_API_URL)
+        .post(format!("{base_url}/v1/responses"))
         .bearer_auth(api_key)
         .json(&body)
         .send()
@@ -324,6 +344,24 @@ async fn send_request(api_key: &str, body: Value) -> Result<Value, String> {
     }
 
     Ok(payload)
+}
+
+fn normalize_base_url(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    let normalized = if trimmed.is_empty() {
+        DEFAULT_AI_BASE_URL
+    } else {
+        trimmed.trim_end_matches('/')
+    };
+    let parsed = reqwest::Url::parse(normalized)
+        .map_err(|_| "Base URL 格式无效，请输入完整的 HTTP 或 HTTPS 地址。".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        return Err("Base URL 格式无效，请输入完整的 HTTP 或 HTTPS 地址。".into());
+    }
+    if parsed.query().is_some() || parsed.fragment().is_some() {
+        return Err("Base URL 不能包含查询参数或片段。".into());
+    }
+    Ok(normalized.to_string())
 }
 
 fn recognition_request(image_data_url: &str) -> Value {
@@ -368,7 +406,7 @@ fn recognition_request(image_data_url: &str) -> Value {
 fn recognition_prompt() -> String {
     format!(
         r#"识别逆水寒手游内功界面截图。任务：
-1. 读取基础属性并映射到以下 ID：season=赛年百分比，strengthOrQi=力量/气海，attack=攻击，armorPenetration=破防，factionRestraint=流派克制百分比，criticalHit=会心，maxAttack=最大攻击，minAttack=最小攻击，agility=身法，endurance=耐力，constitution=根骨。百分数直接返回显示数值，例如 4.7% 返回 4.7。无法确定的属性返回 0。
+1. 读取基础属性并映射到以下 ID：season=赛年百分比，strengthOrQi=力量/气海，attack=攻击，armorPenetration=破防，factionRestraint=流派克制百分比，criticalHit=会心，maxAttack=最大攻击，minAttack=最小攻击，agility=身法，endurance=耐力，constitution=根骨。百分数直接返回显示数值，例如 4.7% 返回 4.7。只能把标签完整等于“会心”的进攻词条写入 criticalHit；“抗会心”是防御词条，必须忽略，绝对不得写入 criticalHit。截图只出现“抗会心”而没有“会心”时，criticalHit 必须返回 0。无法确定的属性返回 0。
 2. 识别截图中已携带的内功图标。参考图可能与截图颜色不同，必须忽略颜色、稀有度边框和光效，只比较图形轮廓与内部纹理。只返回参考图中对应的四位数字编号，不要返回内功名称、拼音或英文 ID，不得创造编号。
 3. 不识别灵、灵韵或类似状态。
 只返回一个 JSON 对象，不要 Markdown 和解释。格式：{{"baseStats":{{{}}},"equippedSkillCodes":["0001"]}}。baseStats 必须包含全部 11 个 ID。"#,
@@ -591,10 +629,23 @@ mod tests {
 
     #[test]
     fn creates_safe_mystery_code_status() {
-        let status = mystery_code_status(Some("mystery-123456"));
+        let status = mystery_code_status(Some("mystery-123456"), DEFAULT_AI_BASE_URL);
         assert!(status.configured);
         assert_eq!(status.last_four.as_deref(), Some("3456"));
-        assert!(!mystery_code_status(None).configured);
+        assert_eq!(status.base_url, DEFAULT_AI_BASE_URL);
+        assert!(!mystery_code_status(None, DEFAULT_AI_BASE_URL).configured);
+    }
+
+    #[test]
+    fn normalizes_and_validates_base_urls() {
+        assert_eq!(
+            normalize_base_url(" https://gzxsy.vip/ ").as_deref(),
+            Ok(DEFAULT_AI_BASE_URL)
+        );
+        assert_eq!(normalize_base_url("").as_deref(), Ok(DEFAULT_AI_BASE_URL));
+        assert!(normalize_base_url("gzxsy.vip").is_err());
+        assert!(normalize_base_url("file:///tmp/api").is_err());
+        assert!(normalize_base_url("https://gzxsy.vip?token=x").is_err());
     }
 
     #[test]
@@ -652,6 +703,11 @@ mod tests {
         assert_eq!(request["reasoning"]["effort"], "none");
         assert_eq!(request["max_output_tokens"], 4096);
         assert_eq!(request["input"][0]["content"][0]["type"], "input_text");
+        let prompt = request["input"][0]["content"][0]["text"]
+            .as_str()
+            .expect("recognition prompt");
+        assert!(prompt.contains("“抗会心”是防御词条，必须忽略"));
+        assert!(prompt.contains("没有“会心”时，criticalHit 必须返回 0"));
         assert_eq!(request["input"][0]["content"][2]["type"], "input_image");
         assert_eq!(request["input"][0]["content"][4]["type"], "input_image");
         assert_eq!(

@@ -45,6 +45,7 @@ export type AppearancePreferences = {
 export type MysteryCodeStatus = {
   configured: boolean
   lastFour: string | null
+  baseUrl: string
 }
 
 export type InternalSkillRecognitionResult = {
@@ -126,7 +127,7 @@ export type MacroAPI = {
   exportProfile: (id: string) => Promise<MacroState>
   importProfile: () => Promise<MacroState>
   getMysteryCodeStatus: () => Promise<MysteryCodeStatus>
-  saveAndValidateMysteryCode: (mysteryCode: string) => Promise<MysteryCodeStatus>
+  saveAndValidateMysteryCode: (mysteryCode: string, baseUrl: string) => Promise<MysteryCodeStatus>
   deleteMysteryCode: () => Promise<MysteryCodeStatus>
   recognizeInternalSkillImage: (imageDataUrl: string) => Promise<InternalSkillRecognitionResult>
   onState: (callback: (state: MacroState) => void) => () => void
@@ -227,8 +228,10 @@ export const macroApi: MacroAPI = {
   exportProfile: (id) => invokeState('export_profile', { id }),
   importProfile: () => invokeState('import_profile'),
   getMysteryCodeStatus: () => callTauri(() => invoke<MysteryCodeStatus>('get_mystery_code_status')),
-  saveAndValidateMysteryCode: (mysteryCode) =>
-    callTauri(() => invoke<MysteryCodeStatus>('save_and_validate_mystery_code', { mysteryCode })),
+  saveAndValidateMysteryCode: (mysteryCode, baseUrl) =>
+    callTauri(() =>
+      invoke<MysteryCodeStatus>('save_and_validate_mystery_code', { mysteryCode, baseUrl })
+    ),
   deleteMysteryCode: () => callTauri(() => invoke<MysteryCodeStatus>('delete_mystery_code')),
   recognizeInternalSkillImage: (imageDataUrl) =>
     callTauri(() =>
