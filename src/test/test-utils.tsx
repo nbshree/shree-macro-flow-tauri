@@ -131,17 +131,27 @@ export function createMacroApi(state: MacroState = createMacroState()) {
     getMysteryCodeStatus: vi.fn<MacroAPI['getMysteryCodeStatus']>(async () => ({
       configured: false,
       lastFour: null,
-      baseUrl: 'https://gzxsy.vip'
+      baseUrl: 'https://gzxsy.vip',
+      apiKeyConfigured: false,
+      apiKeyLastFour: null,
+      model: 'gpt-5.6-terra'
     })),
+    openAiProviderRegistration: vi.fn<MacroAPI['openAiProviderRegistration']>(async () => {}),
     saveAndValidateMysteryCode: vi.fn<MacroAPI['saveAndValidateMysteryCode']>(async () => ({
       configured: true,
       lastFour: '1234',
-      baseUrl: 'https://gzxsy.vip'
+      baseUrl: 'https://gzxsy.vip',
+      apiKeyConfigured: false,
+      apiKeyLastFour: null,
+      model: 'gpt-5.6-terra'
     })),
     deleteMysteryCode: vi.fn<MacroAPI['deleteMysteryCode']>(async () => ({
       configured: false,
       lastFour: null,
-      baseUrl: 'https://gzxsy.vip'
+      baseUrl: 'https://gzxsy.vip',
+      apiKeyConfigured: false,
+      apiKeyLastFour: null,
+      model: 'gpt-5.6-terra'
     })),
     recognizeInternalSkillImage: vi.fn<MacroAPI['recognizeInternalSkillImage']>(async () => ({
       baseStats: {

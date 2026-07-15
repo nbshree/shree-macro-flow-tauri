@@ -131,6 +131,10 @@ pub struct PersistedData {
     pub mystery_code: Option<String>,
     #[serde(default = "default_ai_base_url")]
     pub ai_base_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai_api_key: Option<String>,
+    #[serde(default = "default_ai_model")]
+    pub ai_model: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -221,6 +225,10 @@ pub fn default_ai_base_url() -> String {
     DEFAULT_AI_BASE_URL.into()
 }
 
+pub fn default_ai_model() -> String {
+    "gpt-5.6-terra".into()
+}
+
 pub fn create_default_profile_store() -> PersistedData {
     let now = now_millis();
     let profile = MacroProfile {
@@ -238,6 +246,8 @@ pub fn create_default_profile_store() -> PersistedData {
         appearance: default_appearance(),
         mystery_code: None,
         ai_base_url: default_ai_base_url(),
+        ai_api_key: None,
+        ai_model: default_ai_model(),
     }
 }
 
@@ -315,12 +325,27 @@ pub fn sanitize_persisted(value: &Value) -> PersistedData {
         .filter(|value| !value.is_empty())
         .map(|value| value.trim_end_matches('/').to_string())
         .unwrap_or_else(default_ai_base_url);
+    let ai_api_key = object
+        .get("aiApiKey")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let ai_model = object
+        .get("aiModel")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(default_ai_model);
 
     if profiles.is_empty() {
         let mut store = create_default_profile_store();
         store.appearance = appearance;
         store.mystery_code = mystery_code;
         store.ai_base_url = ai_base_url;
+        store.ai_api_key = ai_api_key;
+        store.ai_model = ai_model;
         return store;
     }
 
@@ -341,6 +366,8 @@ pub fn sanitize_persisted(value: &Value) -> PersistedData {
         appearance,
         mystery_code,
         ai_base_url,
+        ai_api_key,
+        ai_model,
     }
 }
 
@@ -864,6 +891,8 @@ mod tests {
         assert_eq!(store.appearance, default_appearance());
         assert_eq!(store.mystery_code, None);
         assert_eq!(store.ai_base_url, DEFAULT_AI_BASE_URL);
+        assert_eq!(store.ai_api_key, None);
+        assert_eq!(store.ai_model, "gpt-5.6-terra");
     }
 
     #[test]
@@ -894,6 +923,17 @@ mod tests {
         assert_eq!(store.ai_base_url, "https://example.com");
         let serialized = serde_json::to_value(&store).expect("serialize store");
         assert_eq!(serialized["aiBaseUrl"], "https://example.com");
+    }
+
+    #[test]
+    fn ai_key_and_model_are_trimmed_and_persisted_globally() {
+        let store = sanitize_persisted(&json!({
+            "profiles": [{ "id": "profile", "name": "方案" }],
+            "aiApiKey": "  sk-custom  ",
+            "aiModel": "  vision-custom  "
+        }));
+        assert_eq!(store.ai_api_key.as_deref(), Some("sk-custom"));
+        assert_eq!(store.ai_model, "vision-custom");
     }
 
     #[test]

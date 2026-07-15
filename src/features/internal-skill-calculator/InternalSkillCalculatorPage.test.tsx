@@ -107,12 +107,48 @@ describe('InternalSkillCalculatorPage', () => {
     await waitFor(() =>
       expect(api.saveAndValidateMysteryCode).toHaveBeenCalledWith(
         'shree',
-        'https://gzxsy.vip'
+        'https://gzxsy.vip',
+        '',
+        'gpt-5.6-terra'
       )
     )
     expect(
-      await screen.findByText('神秘代码和 GPT-5.6 Terra 识别服务验证成功并已保存。')
+      await screen.findByText('AI 识别服务验证成功，已保存模型 gpt-5.6-terra。')
     ).toBeVisible()
+  })
+
+  it('accepts a custom API key and model', async () => {
+    const user = userEvent.setup()
+    const api = createMacroApi()
+    renderWithUiProviders(<InternalSkillCalculatorPage active api={api} />)
+
+    await user.click(screen.getByRole('button', { name: 'AI 配置' }))
+    await user.type(screen.getByLabelText('API Key（可选）'), 'sk-custom')
+    const model = screen.getByLabelText('模型名称')
+    await user.clear(model)
+    await user.type(model, 'vision-custom')
+    await user.click(screen.getByRole('button', { name: '保存并验证' }))
+
+    await waitFor(() =>
+      expect(api.saveAndValidateMysteryCode).toHaveBeenCalledWith(
+        '',
+        'https://gzxsy.vip',
+        'sk-custom',
+        'vision-custom'
+      )
+    )
+  })
+
+  it('offers the API provider registration link', async () => {
+    const user = userEvent.setup()
+    const api = createMacroApi()
+    renderWithUiProviders(<InternalSkillCalculatorPage active api={api} />)
+
+    await user.click(screen.getByRole('button', { name: 'AI 配置' }))
+
+    await user.click(screen.getByRole('button', { name: '通过邀请链接注册中转站' }))
+
+    expect(api.openAiProviderRegistration).toHaveBeenCalledOnce()
   })
 
   it('allows the AI base URL to be configured', async () => {
@@ -130,7 +166,9 @@ describe('InternalSkillCalculatorPage', () => {
     await waitFor(() =>
       expect(api.saveAndValidateMysteryCode).toHaveBeenCalledWith(
         'shree',
-        'https://api.example.com/'
+        'https://api.example.com/',
+        '',
+        'gpt-5.6-terra'
       )
     )
   })
@@ -164,10 +202,10 @@ describe('InternalSkillCalculatorPage', () => {
     await waitFor(() => expect(api.getMysteryCodeStatus).toHaveBeenCalled())
     await user.click(screen.getByRole('button', { name: 'AI 配置' }))
     expect(screen.getByText('当前神秘代码尾号 hree')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: '删除神秘代码' }))
+    await user.click(screen.getByRole('button', { name: '删除 AI 凭据' }))
 
     await waitFor(() => expect(api.deleteMysteryCode).toHaveBeenCalled())
-    expect(await screen.findByText('已删除神秘代码。')).toBeVisible()
+    expect(await screen.findByText('已删除 AI 凭据。')).toBeVisible()
   })
 
   it('asks for a mystery code before accepting a pasted image', async () => {
@@ -177,7 +215,7 @@ describe('InternalSkillCalculatorPage', () => {
     await waitFor(() => expect(api.getMysteryCodeStatus).toHaveBeenCalled())
     fireEvent.paste(window, clipboardEventWithImage())
 
-    expect(await screen.findByText('请先配置有效的神秘代码。')).toBeVisible()
+    expect(await screen.findByText('请先配置有效的神秘代码或 API Key。')).toBeVisible()
     expect(api.recognizeInternalSkillImage).not.toHaveBeenCalled()
   })
 

@@ -203,12 +203,14 @@ const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error || '操作失败，请重试。')
 
 const defaultAiBaseUrl = 'https://gzxsy.vip'
+const defaultAiModel = 'gpt-5.6-terra'
 
 type InternalSkillCalculatorPageProps = {
   active?: boolean
   api?: Pick<
     MacroAPI,
     | 'getMysteryCodeStatus'
+    | 'openAiProviderRegistration'
     | 'saveAndValidateMysteryCode'
     | 'deleteMysteryCode'
     | 'recognizeInternalSkillImage'
@@ -223,11 +225,16 @@ export function InternalSkillCalculatorPage({
   const [credentialStatus, setCredentialStatus] = useState<MysteryCodeStatus>({
     configured: false,
     lastFour: null,
-    baseUrl: defaultAiBaseUrl
+    baseUrl: defaultAiBaseUrl,
+    apiKeyConfigured: false,
+    apiKeyLastFour: null,
+    model: defaultAiModel
   })
   const [credentialDialogOpen, setCredentialDialogOpen] = useState(false)
   const [mysteryCodeDraft, setMysteryCodeDraft] = useState('')
   const [baseUrlDraft, setBaseUrlDraft] = useState(defaultAiBaseUrl)
+  const [apiKeyDraft, setApiKeyDraft] = useState('')
+  const [modelDraft, setModelDraft] = useState(defaultAiModel)
   const [showMysteryCode, setShowMysteryCode] = useState(false)
   const [credentialBusy, setCredentialBusy] = useState(false)
   const [credentialError, setCredentialError] = useState('')
@@ -349,7 +356,7 @@ export function InternalSkillCalculatorPage({
       event.preventDefault()
       setRecognitionMessage('')
       if (!credentialStatus.configured) {
-        setCredentialError('请先配置有效的神秘代码。')
+        setCredentialError('请先配置有效的神秘代码或 API Key。')
         setCredentialDialogOpen(true)
         return
       }
@@ -388,24 +395,32 @@ export function InternalSkillCalculatorPage({
   const openCredentialDialog = () => {
     setMysteryCodeDraft('')
     setBaseUrlDraft(credentialStatus.baseUrl)
+    setApiKeyDraft('')
+    setModelDraft(credentialStatus.model ?? defaultAiModel)
     setCredentialError('')
     setShowMysteryCode(false)
     setCredentialDialogOpen(true)
   }
 
   const saveCredential = async () => {
-    if (!mysteryCodeDraft.trim()) {
-      setCredentialError('请输入神秘代码。')
+    if (!mysteryCodeDraft.trim() && !apiKeyDraft.trim() && !credentialStatus.configured) {
+      setCredentialError('请输入神秘代码或 API Key。')
       return
     }
     setCredentialBusy(true)
     setCredentialError('')
     try {
-      const status = await api.saveAndValidateMysteryCode(mysteryCodeDraft, baseUrlDraft)
+      const status = await api.saveAndValidateMysteryCode(
+        mysteryCodeDraft,
+        baseUrlDraft,
+        apiKeyDraft,
+        modelDraft
+      )
       setCredentialStatus(status)
       setMysteryCodeDraft('')
+      setApiKeyDraft('')
       setCredentialDialogOpen(false)
-      setRecognitionMessage('神秘代码和 GPT-5.6 Terra 识别服务验证成功并已保存。')
+      setRecognitionMessage(`AI 识别服务验证成功，已保存模型 ${status.model ?? defaultAiModel}。`)
     } catch (error) {
       setCredentialError(errorMessage(error))
     } finally {
@@ -420,7 +435,8 @@ export function InternalSkillCalculatorPage({
       const status = await api.deleteMysteryCode()
       setCredentialStatus(status)
       setMysteryCodeDraft('')
-      setRecognitionMessage('已删除神秘代码。')
+      setApiKeyDraft('')
+      setRecognitionMessage('已删除 AI 凭据。')
     } catch (error) {
       setCredentialError(errorMessage(error))
     } finally {
@@ -836,7 +852,7 @@ export function InternalSkillCalculatorPage({
           <DialogHeader>
             <DialogTitle>AI 图片识别配置</DialogTitle>
             <DialogDescription>
-              输入神秘代码并验证。配置后，在内功评估页按 Ctrl+V 粘贴截图即可识别。
+              输入神秘代码或自己的 API Key。配置后，按 Ctrl+V 粘贴截图即可识别。
             </DialogDescription>
           </DialogHeader>
 
@@ -850,11 +866,56 @@ export function InternalSkillCalculatorPage({
               <div>
                 <strong>{credentialStatus.configured ? '已配置' : '尚未配置'}</strong>
                 <span>
-                  {credentialStatus.configured && credentialStatus.lastFour
-                    ? `当前神秘代码尾号 ${credentialStatus.lastFour}`
-                    : '使用 GPT-5.6 Terra 图片理解模型'}
+                  {credentialStatus.apiKeyConfigured && credentialStatus.apiKeyLastFour
+                    ? `当前 API Key 尾号 ${credentialStatus.apiKeyLastFour}`
+                    : credentialStatus.configured && credentialStatus.lastFour
+                      ? `当前神秘代码尾号 ${credentialStatus.lastFour}`
+                      : `使用 ${credentialStatus.model ?? defaultAiModel} 图片理解模型`}
                 </span>
               </div>
+            </div>
+
+            <div className="calculator-ai-key-field">
+              <Label htmlFor="ai-model">模型名称</Label>
+              <Input
+                id="ai-model"
+                value={modelDraft}
+                disabled={credentialBusy}
+                autoComplete="off"
+                placeholder={defaultAiModel}
+                onChange={(event) => setModelDraft(event.currentTarget.value)}
+              />
+              <small>默认 {defaultAiModel}，也可以填写服务商支持的模型名称。</small>
+            </div>
+
+            <div className="calculator-ai-key-field">
+              <Label htmlFor="ai-api-key">API Key（可选）</Label>
+              <Input
+                id="ai-api-key"
+                type="password"
+                value={apiKeyDraft}
+                disabled={credentialBusy}
+                autoComplete="off"
+                placeholder={
+                  credentialStatus.apiKeyConfigured ? '输入新的 API Key 以替换' : 'sk-...'
+                }
+                onChange={(event) => setApiKeyDraft(event.currentTarget.value)}
+              />
+              <small>
+                填写后将直接使用此 API Key，不再通过神秘代码获取。没有 API Key？
+                <button
+                  type="button"
+                  className="calculator-ai-register-link"
+                  onClick={() => {
+                    void api.openAiProviderRegistration().catch((error: unknown) => {
+                      setCredentialError(errorMessage(error))
+                    })
+                  }}
+                >
+                  通过邀请链接注册中转站
+                </button>
+                。
+              </small>
             </div>
 
             <div className="calculator-ai-key-field">
@@ -898,7 +959,7 @@ export function InternalSkillCalculatorPage({
                   {showMysteryCode ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
                 </Button>
               </div>
-              <small>保存前会验证神秘代码，并调用一次 GPT-5.6 Terra 检查识别服务是否可用。</small>
+              <small>没有自己的 API Key 时可填写；保存前会调用所选模型验证服务。</small>
             </div>
 
             {credentialError ? (
@@ -918,12 +979,15 @@ export function InternalSkillCalculatorPage({
                 disabled={credentialBusy}
                 onClick={() => void deleteCredential()}
               >
-                删除神秘代码
+                删除 AI 凭据
               </Button>
             ) : null}
             <Button
               type="button"
-              disabled={credentialBusy || !mysteryCodeDraft.trim()}
+              disabled={
+                credentialBusy ||
+                (!credentialStatus.configured && !mysteryCodeDraft.trim() && !apiKeyDraft.trim())
+              }
               onClick={() => void saveCredential()}
             >
               {credentialBusy ? (

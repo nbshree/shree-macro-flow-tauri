@@ -129,6 +129,21 @@
   font-size: 11px;
 }
 
+.calculator-ai-register-link {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+  font: inherit;
+  text-underline-offset: 2px;
+}
+
+.calculator-ai-register-link:hover {
+  text-decoration: underline;
+}
+
 .calculator-ai-key-field {
   display: grid;
   gap: 7px;

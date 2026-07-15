@@ -78,6 +78,7 @@ pub fn run() {
             commands::export_profile,
             commands::import_profile,
             internal_skill_ai::get_mystery_code_status,
+            internal_skill_ai::open_ai_provider_registration,
             internal_skill_ai::save_and_validate_mystery_code,
             internal_skill_ai::delete_mystery_code,
             internal_skill_ai::recognize_internal_skill_image,
