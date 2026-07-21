@@ -3,15 +3,14 @@
 基于 Tauri 2、React、TypeScript 和 Rust 开发的 Windows 桌面工具，集自动化宏流程与
 《逆水寒》手游新世界内功评估于一体。
 
-[![Latest Release](https://img.shields.io/github/v/release/nbshree/shree-macro-flow-tauri?label=release)](https://github.com/nbshree/shree-macro-flow-tauri/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4)](https://github.com/nbshree/shree-macro-flow-tauri/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4)](https://gitee.com/nbshree/shree-macro-flow-tauri/releases)
 
 ## 下载
 
-前往 [Releases](https://github.com/nbshree/shree-macro-flow-tauri/releases/latest) 下载最新的
-`自动点击流程台_x.x.x_x64-setup.exe` 并安装。
+前往 [Gitee 发行版](https://gitee.com/nbshree/shree-macro-flow-tauri/releases) 下载最新的
+`macro-flow_x.x.x_x64-setup.exe` 并安装。
 
-当前版本：`v1.5.1`
+当前版本：`v1.7.1`
 
 ## 功能
 
@@ -150,6 +149,9 @@ cargo check --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 pnpm tauri:build
 ```
+
+版本更新、自动打标签发行、流水线观察和失败恢复见
+[`docs/release.md`](docs/release.md)。
 
 ## 用户数据
 
