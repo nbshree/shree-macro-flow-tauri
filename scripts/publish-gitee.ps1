@@ -641,14 +641,14 @@ try {
       -Uri "$apiBase/contents/$updaterFeedPath" `
       -Headers $headers `
       -Method Post `
-      -Form $feedCommit | Out-Null
+      -Body $feedCommit | Out-Null
   } else {
     $feedCommit.sha = [string]$currentFeedFile.sha
     Invoke-RestMethod `
       -Uri "$apiBase/contents/$updaterFeedPath" `
       -Headers $headers `
       -Method Put `
-      -Form $feedCommit | Out-Null
+      -Body $feedCommit | Out-Null
   }
 
   $feedVerificationUrl = "${updaterFeedUrl}?verify=$([Guid]::NewGuid().ToString('N'))"
