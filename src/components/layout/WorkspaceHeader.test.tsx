@@ -6,9 +6,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { createMacroController, createMacroState, renderWithUiProviders } from '@/test/test-utils'
 import type { ThemeId } from '@/themes'
 
-import { WorkspaceHeader } from './WorkspaceHeader'
+import { WorkspaceHeader, type WorkspaceView } from './WorkspaceHeader'
 
-function renderHeader(themeId: ThemeId, onOpenTheme = vi.fn()) {
+function renderHeader(
+  themeId: ThemeId,
+  onOpenTheme = vi.fn(),
+  activeWorkspace: WorkspaceView = 'macro'
+) {
   const controller = createMacroController({
     state: createMacroState({ appearance: { themeId, cleanMode: false } })
   })
@@ -17,7 +21,7 @@ function renderHeader(themeId: ThemeId, onOpenTheme = vi.fn()) {
   renderWithUiProviders(
     <WorkspaceHeader
       controller={controller}
-      activeWorkspace="macro"
+      activeWorkspace={activeWorkspace}
       themeTriggerRef={createRef<HTMLButtonElement>()}
       onWorkspaceChange={onWorkspaceChange}
       onOpenTheme={onOpenTheme}
@@ -56,9 +60,18 @@ describe('WorkspaceHeader', () => {
     const user = userEvent.setup()
     const { onWorkspaceChange } = renderHeader('longyin')
 
-    await user.click(screen.getByRole('tab', { name: '内功评估' }))
+    await user.click(screen.getByRole('tab', { name: '防守内功' }))
 
     expect(onWorkspaceChange).toHaveBeenCalledWith('calculator')
+  })
+
+  it('switches to the tower calculator workspace from the top-level tabs', async () => {
+    const user = userEvent.setup()
+    const { onWorkspaceChange } = renderHeader('longyin')
+
+    await user.click(screen.getByRole('tab', { name: '拆塔评估' }))
+
+    expect(onWorkspaceChange).toHaveBeenCalledWith('towerCalculator')
   })
 
   it('supports arrow-key navigation between workspace tabs', async () => {
@@ -70,6 +83,59 @@ describe('WorkspaceHeader', () => {
     await user.keyboard('{ArrowRight}')
 
     expect(onWorkspaceChange).toHaveBeenCalledWith('calculator')
-    expect(screen.getByRole('tab', { name: '内功评估' })).toHaveFocus()
+    expect(screen.getByRole('tab', { name: '防守内功' })).toHaveFocus()
+  })
+
+  it('cycles through three workspace tabs with the arrow keys', async () => {
+    const user = userEvent.setup()
+    const { onWorkspaceChange } = renderHeader('longyin', vi.fn(), 'towerCalculator')
+
+    const towerTab = screen.getByRole('tab', { name: '拆塔评估' })
+    towerTab.focus()
+    await user.keyboard('{ArrowRight}')
+
+    expect(onWorkspaceChange).toHaveBeenLastCalledWith('macro')
+    expect(screen.getByRole('tab', { name: '宏流程' })).toHaveFocus()
+
+    towerTab.focus()
+    await user.keyboard('{ArrowLeft}')
+
+    expect(onWorkspaceChange).toHaveBeenLastCalledWith('calculator')
+    expect(screen.getByRole('tab', { name: '防守内功' })).toHaveFocus()
+  })
+
+  it('moves to the first and last workspace tabs with Home and End', async () => {
+    const user = userEvent.setup()
+    const { onWorkspaceChange } = renderHeader('longyin', vi.fn(), 'calculator')
+    const calculatorTab = screen.getByRole('tab', { name: '防守内功' })
+
+    calculatorTab.focus()
+    await user.keyboard('{Home}')
+
+    expect(onWorkspaceChange).toHaveBeenLastCalledWith('macro')
+    expect(screen.getByRole('tab', { name: '宏流程' })).toHaveFocus()
+
+    calculatorTab.focus()
+    await user.keyboard('{End}')
+
+    expect(onWorkspaceChange).toHaveBeenLastCalledWith('towerCalculator')
+    expect(screen.getByRole('tab', { name: '拆塔评估' })).toHaveFocus()
+  })
+
+  it('exposes a roving tab stop and matching panel relationships', () => {
+    renderHeader('longyin', vi.fn(), 'towerCalculator')
+
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs).toHaveLength(3)
+    expect(tabs.map((tab) => tab.getAttribute('aria-controls'))).toEqual([
+      'macro-workspace',
+      'calculator-workspace',
+      'tower-calculator-workspace'
+    ])
+    expect(screen.getByRole('tab', { name: '拆塔评估' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: '拆塔评估' })).toHaveAttribute('tabindex', '0')
+    expect(screen.getByRole('tab', { name: '宏流程' })).toHaveAttribute('tabindex', '-1')
+    expect(screen.getByRole('tab', { name: '防守内功' })).toHaveAttribute('tabindex', '-1')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('拆塔内功评估')
   })
 })

@@ -1,4 +1,4 @@
-import { Calculator, Palette, Sparkles, Workflow } from 'lucide-react'
+import { Calculator, Castle, Palette, Sparkles, Workflow } from 'lucide-react'
 import type { KeyboardEvent, RefObject } from 'react'
 
 import type { MacroController } from '../../hooks/useMacroController'
@@ -14,7 +14,14 @@ type WorkspaceHeaderProps = {
   onOpenTheme: () => void
 }
 
-export type WorkspaceView = 'macro' | 'calculator'
+export type WorkspaceView = 'macro' | 'calculator' | 'towerCalculator'
+
+const workspaceOrder: readonly WorkspaceView[] = ['macro', 'calculator', 'towerCalculator']
+const workspaceTabIds: Record<WorkspaceView, string> = {
+  macro: 'workspace-tab-macro',
+  calculator: 'workspace-tab-calculator',
+  towerCalculator: 'workspace-tab-tower-calculator'
+}
 
 const workspaceLabels: Record<WorkspaceView, { title: string; subtitle: string }> = {
   macro: {
@@ -22,8 +29,12 @@ const workspaceLabels: Record<WorkspaceView, { title: string; subtitle: string }
     subtitle: '自动化流程管理'
   },
   calculator: {
-    title: '新世界内功评估',
+    title: '防守内功评估',
     subtitle: '词条、特性与周天收益分析'
+  },
+  towerCalculator: {
+    title: '拆塔内功评估',
+    subtitle: '双套抗拆、空拆与周天收益对比'
   }
 }
 
@@ -43,17 +54,19 @@ export function WorkspaceHeader({
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
 
     event.preventDefault()
+    const currentIndex = workspaceOrder.indexOf(activeWorkspace)
     const nextWorkspace =
       event.key === 'Home'
-        ? 'macro'
+        ? workspaceOrder[0]
         : event.key === 'End'
-          ? 'calculator'
-          : activeWorkspace === 'macro'
-            ? 'calculator'
-            : 'macro'
+          ? workspaceOrder[workspaceOrder.length - 1]
+          : workspaceOrder[
+              (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + workspaceOrder.length) %
+                workspaceOrder.length
+            ]
 
     onWorkspaceChange(nextWorkspace)
-    document.getElementById(`workspace-tab-${nextWorkspace}`)?.focus()
+    document.getElementById(workspaceTabIds[nextWorkspace])?.focus()
   }
 
   return (
@@ -98,7 +111,23 @@ export function WorkspaceHeader({
           onClick={() => onWorkspaceChange('calculator')}
         >
           <Calculator aria-hidden="true" />
-          <span>内功评估</span>
+          <span>防守内功</span>
+        </Button>
+        <Button
+          className="workspace-switcher__tab"
+          data-active={activeWorkspace === 'towerCalculator'}
+          id="workspace-tab-tower-calculator"
+          type="button"
+          role="tab"
+          variant="ghost"
+          aria-controls="tower-calculator-workspace"
+          aria-selected={activeWorkspace === 'towerCalculator'}
+          tabIndex={activeWorkspace === 'towerCalculator' ? 0 : -1}
+          onKeyDown={handleWorkspaceKeyDown}
+          onClick={() => onWorkspaceChange('towerCalculator')}
+        >
+          <Castle aria-hidden="true" />
+          <span>拆塔评估</span>
         </Button>
       </div>
 

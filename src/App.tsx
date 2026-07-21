@@ -9,7 +9,8 @@ import { ProfilePanel } from './components/panels/ProfilePanel'
 import { SettingsPanel } from './components/panels/SettingsPanel'
 import { ThemeBackground, ThemeDialog } from './components/theme'
 import { TooltipProvider } from './components/ui/tooltip'
-import { InternalSkillCalculatorPage } from './features/internal-skill-calculator/InternalSkillCalculatorPage'
+import { InternalSkillCalculatorPage } from './features/internal-skill-calculator'
+import { TowerDemolitionCalculatorPage } from './features/tower-demolition-calculator'
 import { useMacroController } from './hooks/useMacroController'
 import { ThemeProvider } from './themes'
 
@@ -63,6 +64,15 @@ function App(): React.JSX.Element {
                 hidden={activeWorkspace !== 'calculator'}
               >
                 <InternalSkillCalculatorPage active={activeWorkspace === 'calculator'} />
+              </section>
+              <section
+                className="workspace-view"
+                id="tower-calculator-workspace"
+                role="tabpanel"
+                aria-labelledby="workspace-tab-tower-calculator"
+                hidden={activeWorkspace !== 'towerCalculator'}
+              >
+                <TowerDemolitionCalculatorPage />
               </section>
             </div>
           </div>
