@@ -29,13 +29,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -49,14 +42,12 @@ import {
   baseStatDefinitions,
   calculateInternalSkill,
   calculatorRuleMeta,
-  cycleDefinitions,
   defaultCalculatorInput,
   skillDefinitions,
   tierDefinitions,
   type BaseStatId,
   type CalculatorInput,
   type ContributionCategory,
-  type CycleId,
   type SkillId,
   type TierDefinition
 } from './domain'
@@ -69,13 +60,12 @@ const scoreFormatter = new Intl.NumberFormat('zh-CN', {
   maximumFractionDigits: 2
 })
 
-const manualRecognitionConfigNotice = '灵韵和周天组合需要手动配置。'
+const manualRecognitionConfigNotice = '灵状态需要手动配置。'
 
 const contributionCategoryLabels: Record<ContributionCategory, string> = {
   'base-stat': '基础词条',
   spirit: '灵',
-  trait: '特性',
-  cycle: '周天'
+  trait: '特性'
 }
 
 const formatTierRange = (tier: TierDefinition): string => {
@@ -94,8 +84,7 @@ const cloneCalculatorInput = (input: CalculatorInput): CalculatorInput => ({
   baseStats: { ...input.baseStats },
   skills: Object.fromEntries(
     skillDefinitions.map((definition) => [definition.id, { ...input.skills[definition.id] }])
-  ) as CalculatorInput['skills'],
-  cycleId: input.cycleId
+  ) as CalculatorInput['skills']
 })
 
 const createEmptyInput = (): CalculatorInput => {
@@ -112,7 +101,6 @@ const createEmptyInput = (): CalculatorInput => {
     }
   }
 
-  input.cycleId = cycleDefinitions.find((definition) => definition.score === 0)?.id ?? 'metalFire'
   return input
 }
 
@@ -250,17 +238,13 @@ export function InternalSkillCalculatorPage({
     (count, definition) => count + Number(calculatorInput.skills[definition.id].spirit),
     0
   )
-  const selectedCycle =
-    cycleDefinitions.find((definition) => definition.id === calculatorInput.cycleId) ??
-    cycleDefinitions[0]
   const hasEvaluationInput =
     baseStatDefinitions.some((definition) => calculatorInput.baseStats[definition.id] !== 0) ||
     skillDefinitions.some((definition) => {
       const skillInput = calculatorInput.skills[definition.id]
       return skillInput.equipped || skillInput.spirit
     })
-  const hasDraftInput =
-    hasEvaluationInput || calculatorInput.cycleId !== defaultCalculatorInput.cycleId
+  const hasDraftInput = hasEvaluationInput
   const skillScores = useMemo(() => {
     const scores = new Map<string, number>()
 
@@ -338,8 +322,7 @@ export function InternalSkillCalculatorPage({
             spirit: current.skills[definition.id].spirit
           }
         ])
-      ) as CalculatorInput['skills'],
-      cycleId: current.cycleId
+      ) as CalculatorInput['skills']
     }))
   }
 
@@ -486,10 +469,7 @@ export function InternalSkillCalculatorPage({
               >
                 <strong>截图示例</strong>
                 <span>复制包含属性和内功图标的完整面板</span>
-                <img
-                  src={internalSkillPanelExample}
-                  alt="包含属性和内功图标的完整内功面板示例"
-                />
+                <img src={internalSkillPanelExample} alt="包含属性和内功图标的完整内功面板示例" />
               </TooltipContent>
             </Tooltip>
           </div>
@@ -577,40 +557,6 @@ export function InternalSkillCalculatorPage({
                   </label>
                 )
               })}
-            </div>
-
-            <div className="calculator-cycle-field">
-              <div className="calculator-cycle-field__heading">
-                <div>
-                  <span id="calculator-cycle-label">周天组合</span>
-                  <small>周天收益计入特性分</small>
-                </div>
-                <Badge variant="secondary">
-                  {selectedCycle.score === 0
-                    ? '不加分'
-                    : `${formatSignedScore(selectedCycle.score)} 分`}
-                </Badge>
-              </div>
-              <Select
-                value={calculatorInput.cycleId}
-                onValueChange={(value) =>
-                  setCalculatorInput((current) => ({
-                    ...current,
-                    cycleId: value as CycleId
-                  }))
-                }
-              >
-                <SelectTrigger aria-labelledby="calculator-cycle-label">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {cycleDefinitions.map((definition) => (
-                    <SelectItem value={definition.id} key={definition.id}>
-                      {definition.label}（{formatSignedScore(definition.score)} 分）
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
         </section>
@@ -929,9 +875,7 @@ export function InternalSkillCalculatorPage({
                 placeholder={defaultAiBaseUrl}
                 onChange={(event) => setBaseUrlDraft(event.currentTarget.value)}
               />
-              <small>
-                默认 {defaultAiBaseUrl}，请求会发送到 Base URL 下的 /v1/responses。
-              </small>
+              <small>默认 {defaultAiBaseUrl}，请求会发送到 Base URL 下的 /v1/responses。</small>
             </div>
 
             <div className="calculator-ai-key-field">

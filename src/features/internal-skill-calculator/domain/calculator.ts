@@ -1,4 +1,4 @@
-import { baseStatDefinitions, cycleDefinitions, skillDefinitions, tierDefinitions } from './rules'
+import { baseStatDefinitions, skillDefinitions, tierDefinitions } from './rules'
 import type {
   CalculatorContribution,
   CalculatorInput,
@@ -33,20 +33,6 @@ const getJueDianSynergyScore = (input: CalculatorInput) => {
 
 const getZhuoXingPool = (input: CalculatorInput) =>
   ZHUO_XING_BASE_POOL + getZhongMiaoSynergyScore(input) + getJueDianSynergyScore(input)
-
-const getTraitPotential = (skillId: SkillId, input: CalculatorInput) => {
-  const definition = skillDefinitions.find((skill) => skill.id === skillId)
-
-  if (!definition) {
-    return 0
-  }
-
-  if (skillId === 'zhuoXingGuanRi') {
-    return definition.traitBaseScore + 0.2 * getZhuoXingPool(input)
-  }
-
-  return definition.traitBaseScore
-}
 
 const getSpiritPotential = (skillId: SkillId, input: CalculatorInput) => {
   const definition = skillDefinitions.find((skill) => skill.id === skillId)
@@ -86,7 +72,7 @@ const createSynergyNotes = (input: CalculatorInput) => {
   const zhongMiaoScore = getZhongMiaoSynergyScore(input)
   const jueDianScore = getJueDianSynergyScore(input)
   const notes = [
-    `灼星贯日固定联动池为 ${ZHUO_XING_BASE_POOL} 分。`,
+    `灼星贯日-灵固定联动池为 ${ZHUO_XING_BASE_POOL} 分。`,
     input.skills.zhongMiao.spirit
       ? '众妙-灵生效，灼星贯日联动按 7 分计算。'
       : input.skills.zhongMiao.equipped
@@ -99,7 +85,7 @@ const createSynergyNotes = (input: CalculatorInput) => {
         : '绝电惊沙未携带且无灵，未计入灼星贯日联动。'
   ]
 
-  if (input.skills.zhuoXingGuanRi.equipped || input.skills.zhuoXingGuanRi.spirit) {
+  if (input.skills.zhuoXingGuanRi.spirit) {
     notes.push(
       `当前联动池共 ${roundForExplanation(
         ZHUO_XING_BASE_POOL + zhongMiaoScore + jueDianScore
@@ -140,7 +126,7 @@ export const calculateInternalSkill = (input: CalculatorInput): CalculatorResult
 
   const traitContributions: CalculatorContribution[] = skillDefinitions.map((definition) => {
     const active = input.skills[definition.id].equipped
-    const score = active ? getTraitPotential(definition.id, input) : 0
+    const score = active ? definition.traitBaseScore : 0
 
     return {
       id: `trait:${definition.id}`,
@@ -152,21 +138,11 @@ export const calculateInternalSkill = (input: CalculatorInput): CalculatorResult
     }
   })
 
-  const cycle =
-    cycleDefinitions.find((definition) => definition.id === input.cycleId) ?? cycleDefinitions[0]
-  const cycleContribution: CalculatorContribution = {
-    id: `cycle:${cycle.id}`,
-    category: 'cycle',
-    sourceId: cycle.id,
-    label: `${cycle.label}周天`,
-    score: cycle.score,
-    active: cycle.score !== 0
-  }
   const attributeScore = [...baseStatContributions, ...spiritContributions].reduce(
     (total, contribution) => total + contribution.score,
     0
   )
-  const traitScore = [...traitContributions, cycleContribution].reduce(
+  const traitScore = traitContributions.reduce(
     (total, contribution) => total + contribution.score,
     0
   )
@@ -179,12 +155,7 @@ export const calculateInternalSkill = (input: CalculatorInput): CalculatorResult
     totalScore,
     tier,
     nextTier: getNextTier(tier, totalScore),
-    contributions: [
-      ...baseStatContributions,
-      ...spiritContributions,
-      ...traitContributions,
-      cycleContribution
-    ],
+    contributions: [...baseStatContributions, ...spiritContributions, ...traitContributions],
     synergyNotes: createSynergyNotes(input)
   }
 }

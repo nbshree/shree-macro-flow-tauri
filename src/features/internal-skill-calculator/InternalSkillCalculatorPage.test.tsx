@@ -14,12 +14,13 @@ describe('InternalSkillCalculatorPage', () => {
       screen.getByText((_, element) =>
         Boolean(
           element?.classList.contains('calculator-paste-hint__copy') &&
-            element.textContent?.includes('复制内功面板截图，按 Ctrl+V 即可计算')
+          element.textContent?.includes('复制内功面板截图，按 Ctrl+V 即可计算')
         )
       )
     ).toBeVisible()
     expect(screen.getByText('Ctrl+V')).toHaveProperty('tagName', 'KBD')
     expect(screen.getByRole('button', { name: '查看截图示例' })).toHaveTextContent('截图示例')
+    expect(screen.getByText('规则 7.20')).toBeVisible()
     expect(screen.getByRole('status')).toHaveTextContent('填写属性或选择内功后查看评估结果')
     expect(screen.queryByRole('button', { name: '载入示例' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '清空全部' })).toBeDisabled()
@@ -49,16 +50,17 @@ describe('InternalSkillCalculatorPage', () => {
 
     const factionRestraint = screen.getByRole('spinbutton', { name: '流派克制' })
     await user.clear(factionRestraint)
-    await user.type(factionRestraint, '70')
+    await user.type(factionRestraint, '75')
 
     const summary = screen.getByLabelText('综合评分')
-    expect(within(summary).getByText('70.00')).toBeInTheDocument()
-    expect(summary.querySelector('.calculator-tier-badge')).toHaveTextContent('哥布林精英')
+    expect(within(summary).getByText('70.50')).toBeInTheDocument()
+    expect(summary.querySelector('.calculator-tier-badge')).toHaveTextContent('泰斗')
     const tierGuide = within(summary).getByRole('list', { name: '综合评分档位说明' })
-    expect(within(tierGuide).getByText('63%以下')).toBeInTheDocument()
-    expect(within(tierGuide).getByText('63%~66%')).toBeInTheDocument()
-    expect(within(tierGuide).getByText('75%+')).toBeInTheDocument()
-    expect(within(tierGuide).getByText('哥布林精英').closest('li')).toHaveAttribute(
+    expect(within(tierGuide).getByText('57%以下')).toBeInTheDocument()
+    expect(within(tierGuide).getByText('57%~63%')).toBeInTheDocument()
+    expect(within(tierGuide).getByText('63%~70%')).toBeInTheDocument()
+    expect(within(tierGuide).getByText('70%+')).toBeInTheDocument()
+    expect(within(tierGuide).getByText('泰斗').closest('li')).toHaveAttribute(
       'aria-current',
       'true'
     )
@@ -71,18 +73,11 @@ describe('InternalSkillCalculatorPage', () => {
     expect(screen.queryByText('建议转生')).not.toBeInTheDocument()
   })
 
-  it('keeps the result empty when only the cycle changes and lets the user reset it', async () => {
-    const user = userEvent.setup()
+  it('does not render the removed cycle controls', () => {
     renderWithUiProviders(<InternalSkillCalculatorPage />)
 
-    const cycleSelect = screen.getByRole('combobox', { name: '周天组合' })
-    cycleSelect.focus()
-    await user.keyboard('{Enter}')
-    expect(await screen.findByRole('option', { name: '火木（+2.70 分）' })).toBeInTheDocument()
-    await user.keyboard('{ArrowDown}{Enter}')
-
-    expect(screen.getByRole('status')).toHaveTextContent('填写属性或选择内功后查看评估结果')
-    expect(screen.getByRole('button', { name: '清空全部' })).toBeEnabled()
+    expect(screen.queryByRole('combobox', { name: '周天组合' })).not.toBeInTheDocument()
+    expect(screen.queryByText('周天收益计入特性分')).not.toBeInTheDocument()
   })
 
   it('recalculates when a skill is selected', async () => {
@@ -112,9 +107,7 @@ describe('InternalSkillCalculatorPage', () => {
         'gpt-5.6-terra'
       )
     )
-    expect(
-      await screen.findByText('AI 识别服务验证成功，已保存模型 gpt-5.6-terra。')
-    ).toBeVisible()
+    expect(await screen.findByText('AI 识别服务验证成功，已保存模型 gpt-5.6-terra。')).toBeVisible()
   })
 
   it('accepts a custom API key and model', async () => {
@@ -288,8 +281,8 @@ describe('InternalSkillCalculatorPage', () => {
     expect(screen.getByRole('switch', { name: '携带众妙' })).toBeChecked()
     expect(screen.getByRole('switch', { name: '携带承影锋烁' })).toBeChecked()
     expect(screen.getByRole('switch', { name: '众妙灵' })).toBeChecked()
-    expect(screen.getByRole('combobox', { name: '周天组合' })).toHaveTextContent('金火')
-    expect(screen.getByText('灵韵和周天组合需要手动配置。')).toHaveClass(
+    expect(screen.queryByRole('combobox', { name: '周天组合' })).not.toBeInTheDocument()
+    expect(screen.getByText('灵状态需要手动配置。')).toHaveClass(
       'calculator-recognition-manual-notice'
     )
   })

@@ -201,7 +201,6 @@
 .calculator-toolbar__actions,
 .calculator-panel__title,
 .calculator-panel__meta,
-.calculator-cycle-field__heading,
 .calculator-result-section__heading {
   display: flex;
   align-items: center;
@@ -479,37 +478,6 @@
   padding-right: 25px;
 }
 
-.calculator-cycle-field {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 10px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-control);
-  background: var(--surface-muted);
-}
-
-.calculator-cycle-field__heading {
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.calculator-cycle-field__heading > div {
-  display: grid;
-  gap: 2px;
-}
-
-.calculator-cycle-field__heading span {
-  color: var(--text-primary);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.calculator-cycle-field__heading small {
-  color: var(--text-muted);
-  font-size: 10px;
-}
-
 .calculator-skill-table {
   display: flex;
   flex: 1;
@@ -784,11 +752,6 @@
   line-height: 1.35;
 }
 
-.calculator-tier-guide li:first-child,
-.calculator-tier-guide li:last-child {
-  grid-column: 1 / -1;
-}
-
 .calculator-tier-guide li[data-current='true'] {
   border-color: currentColor;
   background: color-mix(in srgb, currentColor 9%, transparent);
@@ -798,17 +761,15 @@
   color: #1683a8;
 }
 
-.calculator-tier-guide li[data-tier='smallGoblin'],
-.calculator-tier-guide li[data-tier='largeGoblin'] {
+.calculator-tier-guide li[data-tier='hero'] {
   color: #58a826;
 }
 
-.calculator-tier-guide li[data-tier='goblinElite'],
-.calculator-tier-guide li[data-tier='goblinGeneral'] {
+.calculator-tier-guide li[data-tier='master'] {
   color: #d06ab4;
 }
 
-.calculator-tier-guide li[data-tier='goblinKing'] {
+.calculator-tier-guide li[data-tier='grandmaster'] {
   color: #d8372f;
 }
 

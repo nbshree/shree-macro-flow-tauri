@@ -1,20 +1,14 @@
-import type {
-  BaseStatDefinition,
-  CalculatorInput,
-  CycleDefinition,
-  SkillDefinition,
-  TierDefinition
-} from './types'
+import type { BaseStatDefinition, CalculatorInput, SkillDefinition, TierDefinition } from './types'
 
 export const calculatorRuleMeta = {
-  id: 'new-world-defense-7.8',
-  title: '7.8 日新世界防守团内功计算器',
-  version: '7.8',
+  id: 'new-world-defense-7.20',
+  title: '7.20日新世界防守团内功计算器',
+  version: '7.20',
   author: '月望舒',
   contributors: ['杰少', '满天星河', '智齿'],
   formulaSource: '折字愿为安',
   spiritMode: 'boolean',
-  sourceRange: 'C3:C28、G3:G17、L2'
+  sourceRange: 'B2:I31'
 } as const
 
 export const baseStatDefinitions: readonly BaseStatDefinition[] = [
@@ -22,78 +16,78 @@ export const baseStatDefinitions: readonly BaseStatDefinition[] = [
     id: 'season',
     label: '赛年',
     unit: 'percent',
-    defaultValue: 0,
-    scoreMultiplier: 0.88
+    defaultValue: 1,
+    scoreMultiplier: 0.86
   },
   {
     id: 'strengthOrQi',
     label: '力量/气海',
     unit: 'number',
-    defaultValue: 36,
-    scoreMultiplier: 2.5 * 0.0455 + 0.0425
+    defaultValue: 100,
+    scoreMultiplier: 0.1415
   },
   {
     id: 'attack',
     label: '攻击',
     unit: 'number',
-    defaultValue: 237,
-    scoreMultiplier: 0.0455
+    defaultValue: 100,
+    scoreMultiplier: 0.043
   },
   {
     id: 'armorPenetration',
     label: '破防',
     unit: 'number',
-    defaultValue: 83,
-    scoreMultiplier: 0.0425
+    defaultValue: 100,
+    scoreMultiplier: 0.034
   },
   {
     id: 'factionRestraint',
     label: '流派克制',
     unit: 'percent',
-    defaultValue: 4.7,
-    scoreMultiplier: 1
+    defaultValue: 1,
+    scoreMultiplier: 0.94
   },
   {
     id: 'criticalHit',
     label: '会心',
     unit: 'number',
-    defaultValue: 127,
-    scoreMultiplier: 0.0182
+    defaultValue: 100,
+    scoreMultiplier: 0.0149
   },
   {
     id: 'maxAttack',
     label: '最大攻击',
     unit: 'number',
-    defaultValue: 86,
-    scoreMultiplier: 0.0455 / 2
+    defaultValue: 100,
+    scoreMultiplier: 0.0215
   },
   {
     id: 'minAttack',
     label: '最小攻击',
     unit: 'number',
-    defaultValue: 36,
-    scoreMultiplier: 0.0455 / 2
+    defaultValue: 100,
+    scoreMultiplier: 0.0215
   },
   {
     id: 'agility',
     label: '身法',
     unit: 'number',
-    defaultValue: 0,
-    scoreMultiplier: 0.0182 * 6
+    defaultValue: 100,
+    scoreMultiplier: 0.0894
   },
   {
     id: 'endurance',
     label: '耐力',
     unit: 'number',
-    defaultValue: 0,
-    scoreMultiplier: 0.0455
+    defaultValue: 100,
+    scoreMultiplier: 0.043
   },
   {
     id: 'constitution',
     label: '根骨',
     unit: 'number',
-    defaultValue: 0,
-    scoreMultiplier: 0.0455
+    defaultValue: 100,
+    scoreMultiplier: 0.043
   }
 ]
 
@@ -101,7 +95,7 @@ export const skillDefinitions: readonly SkillDefinition[] = [
   {
     id: 'zhuoXingGuanRi',
     label: '灼星贯日',
-    traitBaseScore: 3,
+    traitBaseScore: 6.25,
     spiritBaseScore: 1.875,
     defaultEquipped: true,
     defaultSpirit: true
@@ -133,8 +127,8 @@ export const skillDefinitions: readonly SkillDefinition[] = [
   {
     id: 'chuKuangGe',
     label: '楚狂歌',
-    traitBaseScore: 5.4,
-    spiritBaseScore: 1.78,
+    traitBaseScore: 5.1,
+    spiritBaseScore: 1.7,
     defaultEquipped: true,
     defaultSpirit: false
   },
@@ -149,23 +143,23 @@ export const skillDefinitions: readonly SkillDefinition[] = [
   {
     id: 'fenRen',
     label: '焚刃',
-    traitBaseScore: 5,
-    spiritBaseScore: 1.65,
+    traitBaseScore: 4.7,
+    spiritBaseScore: 1.6,
     defaultEquipped: false,
     defaultSpirit: false
   },
   {
     id: 'zhanJing',
     label: '斩精',
-    traitBaseScore: 4.8,
-    spiritBaseScore: 1.6,
+    traitBaseScore: 4.5,
+    spiritBaseScore: 1.5,
     defaultEquipped: false,
     defaultSpirit: false
   },
   {
     id: 'poFu',
     label: '破釜',
-    traitBaseScore: 4.8,
+    traitBaseScore: 5,
     spiritBaseScore: 1.6,
     defaultEquipped: true,
     defaultSpirit: false
@@ -173,8 +167,8 @@ export const skillDefinitions: readonly SkillDefinition[] = [
   {
     id: 'guanShanYue',
     label: '贯山月（卡轴）',
-    traitBaseScore: 4.9,
-    spiritBaseScore: 1.63,
+    traitBaseScore: 3.9,
+    spiritBaseScore: 1.3,
     defaultEquipped: false,
     defaultSpirit: false
   },
@@ -182,23 +176,23 @@ export const skillDefinitions: readonly SkillDefinition[] = [
     id: 'duanHanMang',
     label: '锻寒芒',
     traitBaseScore: 4.8,
-    spiritBaseScore: 1.65,
+    spiritBaseScore: 1.6,
     defaultEquipped: false,
     defaultSpirit: false
   },
   {
     id: 'jiShuai',
     label: '击衰',
-    traitBaseScore: 4.2,
-    spiritBaseScore: 1.4,
+    traitBaseScore: 4.5,
+    spiritBaseScore: 1.5,
     defaultEquipped: false,
     defaultSpirit: false
   },
   {
     id: 'jingYu',
     label: '惊羽',
-    traitBaseScore: 4.8,
-    spiritBaseScore: 1.6,
+    traitBaseScore: 4.5,
+    spiritBaseScore: 1.5,
     defaultEquipped: false,
     defaultSpirit: false
   },
@@ -213,17 +207,11 @@ export const skillDefinitions: readonly SkillDefinition[] = [
   {
     id: 'wuYunYao',
     label: '五韵谣',
-    traitBaseScore: 1.75,
+    traitBaseScore: 4.5,
     spiritBaseScore: 1.3,
     defaultEquipped: false,
     defaultSpirit: false
   }
-]
-
-export const cycleDefinitions: readonly CycleDefinition[] = [
-  { id: 'metalFire', label: '金火', score: 0 },
-  { id: 'fireWood', label: '火木', score: 2.7 },
-  { id: 'metalWood', label: '金木', score: 2.8 }
 ]
 
 export const tierDefinitions: readonly TierDefinition[] = [
@@ -231,13 +219,11 @@ export const tierDefinitions: readonly TierDefinition[] = [
     id: 'rebirthRecommended',
     label: '建议转生',
     minScore: null,
-    maxScore: 63
+    maxScore: 57
   },
-  { id: 'smallGoblin', label: '小哥布林', minScore: 63, maxScore: 66 },
-  { id: 'largeGoblin', label: '大哥布林', minScore: 66, maxScore: 69 },
-  { id: 'goblinElite', label: '哥布林精英', minScore: 69, maxScore: 72 },
-  { id: 'goblinGeneral', label: '哥布林将军', minScore: 72, maxScore: 75 },
-  { id: 'goblinKing', label: '哥布林国王', minScore: 75, maxScore: null }
+  { id: 'hero', label: '豪杰', minScore: 57, maxScore: 63 },
+  { id: 'master', label: '宗师', minScore: 63, maxScore: 70 },
+  { id: 'grandmaster', label: '泰斗', minScore: 70, maxScore: null }
 ]
 
 export const defaultCalculatorInput: CalculatorInput = {
@@ -252,6 +238,5 @@ export const defaultCalculatorInput: CalculatorInput = {
         spirit: definition.defaultSpirit
       }
     ])
-  ) as CalculatorInput['skills'],
-  cycleId: 'metalFire'
+  ) as CalculatorInput['skills']
 }

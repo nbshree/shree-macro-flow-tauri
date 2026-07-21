@@ -28,15 +28,7 @@ export type SkillId =
   | 'caiFeng'
   | 'wuYunYao'
 
-export type CycleId = 'metalFire' | 'fireWood' | 'metalWood'
-
-export type TierId =
-  | 'rebirthRecommended'
-  | 'smallGoblin'
-  | 'largeGoblin'
-  | 'goblinElite'
-  | 'goblinGeneral'
-  | 'goblinKing'
+export type TierId = 'rebirthRecommended' | 'hero' | 'master' | 'grandmaster'
 
 export interface BaseStatDefinition {
   id: BaseStatId
@@ -55,12 +47,6 @@ export interface SkillDefinition {
   defaultSpirit: boolean
 }
 
-export interface CycleDefinition {
-  id: CycleId
-  label: string
-  score: number
-}
-
 export interface SkillInput {
   equipped: boolean
   spirit: boolean
@@ -69,7 +55,6 @@ export interface SkillInput {
 export interface CalculatorInput {
   baseStats: Record<BaseStatId, number>
   skills: Record<SkillId, SkillInput>
-  cycleId: CycleId
 }
 
 export interface TierDefinition {
@@ -79,12 +64,12 @@ export interface TierDefinition {
   maxScore: number | null
 }
 
-export type ContributionCategory = 'base-stat' | 'spirit' | 'trait' | 'cycle'
+export type ContributionCategory = 'base-stat' | 'spirit' | 'trait'
 
 export interface CalculatorContribution {
   id: string
   category: ContributionCategory
-  sourceId: BaseStatId | SkillId | CycleId
+  sourceId: BaseStatId | SkillId
   label: string
   score: number
   active: boolean
