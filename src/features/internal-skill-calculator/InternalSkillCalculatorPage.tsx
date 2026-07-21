@@ -191,7 +191,6 @@ const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error || '操作失败，请重试。')
 
 const defaultAiBaseUrl = 'https://gzxsy.vip'
-const defaultAiModel = 'gpt-5.6-terra'
 
 type InternalSkillCalculatorPageProps = {
   active?: boolean
@@ -215,14 +214,12 @@ export function InternalSkillCalculatorPage({
     lastFour: null,
     baseUrl: defaultAiBaseUrl,
     apiKeyConfigured: false,
-    apiKeyLastFour: null,
-    model: defaultAiModel
+    apiKeyLastFour: null
   })
   const [credentialDialogOpen, setCredentialDialogOpen] = useState(false)
   const [mysteryCodeDraft, setMysteryCodeDraft] = useState('')
   const [baseUrlDraft, setBaseUrlDraft] = useState(defaultAiBaseUrl)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
-  const [modelDraft, setModelDraft] = useState(defaultAiModel)
   const [showMysteryCode, setShowMysteryCode] = useState(false)
   const [credentialBusy, setCredentialBusy] = useState(false)
   const [credentialError, setCredentialError] = useState('')
@@ -379,7 +376,6 @@ export function InternalSkillCalculatorPage({
     setMysteryCodeDraft('')
     setBaseUrlDraft(credentialStatus.baseUrl)
     setApiKeyDraft('')
-    setModelDraft(credentialStatus.model ?? defaultAiModel)
     setCredentialError('')
     setShowMysteryCode(false)
     setCredentialDialogOpen(true)
@@ -396,14 +392,13 @@ export function InternalSkillCalculatorPage({
       const status = await api.saveAndValidateMysteryCode(
         mysteryCodeDraft,
         baseUrlDraft,
-        apiKeyDraft,
-        modelDraft
+        apiKeyDraft
       )
       setCredentialStatus(status)
       setMysteryCodeDraft('')
       setApiKeyDraft('')
       setCredentialDialogOpen(false)
-      setRecognitionMessage(`AI 识别服务验证成功，已保存模型 ${status.model ?? defaultAiModel}。`)
+      setRecognitionMessage('AI 识别服务验证成功。')
     } catch (error) {
       setCredentialError(errorMessage(error))
     } finally {
@@ -816,22 +811,9 @@ export function InternalSkillCalculatorPage({
                     ? `当前 API Key 尾号 ${credentialStatus.apiKeyLastFour}`
                     : credentialStatus.configured && credentialStatus.lastFour
                       ? `当前神秘代码尾号 ${credentialStatus.lastFour}`
-                      : `使用 ${credentialStatus.model ?? defaultAiModel} 图片理解模型`}
+                      : '使用内置图片理解模型'}
                 </span>
               </div>
-            </div>
-
-            <div className="calculator-ai-key-field">
-              <Label htmlFor="ai-model">模型名称</Label>
-              <Input
-                id="ai-model"
-                value={modelDraft}
-                disabled={credentialBusy}
-                autoComplete="off"
-                placeholder={defaultAiModel}
-                onChange={(event) => setModelDraft(event.currentTarget.value)}
-              />
-              <small>默认 {defaultAiModel}，也可以填写服务商支持的模型名称。</small>
             </div>
 
             <div className="calculator-ai-key-field">

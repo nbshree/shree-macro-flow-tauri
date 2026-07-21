@@ -6,13 +6,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tauri::{AppHandle, State};
 
-use crate::{
-    model::{DEFAULT_AI_BASE_URL, default_ai_model},
-    state::AppState,
-};
+use crate::{model::DEFAULT_AI_BASE_URL, state::AppState};
 
 const API_KEY_MAP_URL: &str = "https://license.shree52388.xyz/shree52388401163814apikeymap";
 const AI_PROVIDER_REGISTER_URL: &str = "https://gzxsy.vip/register?aff=xH54";
+const AI_MODEL: &str = "gpt-5.6-sol";
 const MAX_API_KEY_MAP_BYTES: usize = 1024 * 1024;
 const MAX_IMAGE_BYTES: usize = 20 * 1024 * 1024;
 const SKILL_REFERENCE_ATLAS: &[u8] =
@@ -118,7 +116,6 @@ pub struct MysteryCodeStatus {
     base_url: String,
     api_key_configured: bool,
     api_key_last_four: Option<String>,
-    model: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -205,7 +202,6 @@ fn mystery_code_status(
     code: Option<&str>,
     base_url: &str,
     api_key: Option<&str>,
-    model: &str,
 ) -> MysteryCodeStatus {
     let code_last_four = code.map(last_four);
 
@@ -215,7 +211,6 @@ fn mystery_code_status(
         base_url: base_url.to_string(),
         api_key_configured: api_key.is_some(),
         api_key_last_four: api_key.map(last_four),
-        model: model.to_string(),
     }
 }
 
@@ -226,7 +221,6 @@ pub fn get_mystery_code_status(state: State<'_, AppState>) -> MysteryCodeStatus 
         inner.store.mystery_code.as_deref(),
         &inner.store.ai_base_url,
         inner.store.ai_api_key.as_deref(),
-        &inner.store.ai_model,
     )
 }
 
@@ -235,7 +229,6 @@ pub async fn save_and_validate_mystery_code(
     mystery_code: String,
     base_url: String,
     api_key: Option<String>,
-    model: Option<String>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<MysteryCodeStatus, String> {
@@ -245,7 +238,6 @@ pub async fn save_and_validate_mystery_code(
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let normalized_base_url = normalize_base_url(&base_url)?;
-    let normalized_model = normalize_model(model.as_deref().unwrap_or_default())?;
 
     let (stored_mystery_code, stored_api_key) = {
         let inner = state.lock();
@@ -271,15 +263,14 @@ pub async fn save_and_validate_mystery_code(
             .await?
         }
     };
-    test_api_key(&resolved_api_key, &normalized_base_url, &normalized_model)
+    test_api_key(&resolved_api_key, &normalized_base_url)
         .await
-        .map_err(|error| format!("API Key 或模型配置无效：{error}"))?;
+        .map_err(|error| format!("API Key 或 AI 服务配置无效：{error}"))?;
     let (store, path) = {
         let mut inner = state.lock();
         inner.store.mystery_code = effective_mystery_code.clone();
         inner.store.ai_base_url = normalized_base_url.clone();
         inner.store.ai_api_key = effective_api_key.clone();
-        inner.store.ai_model = normalized_model.clone();
         (inner.store.clone(), inner.profile_file.clone())
     };
     state.persist_store(&app, store, path);
@@ -288,7 +279,6 @@ pub async fn save_and_validate_mystery_code(
         effective_mystery_code.as_deref(),
         &normalized_base_url,
         effective_api_key.as_deref(),
-        &normalized_model,
     ))
 }
 
@@ -305,8 +295,7 @@ pub fn delete_mystery_code(app: AppHandle, state: State<'_, AppState>) -> Myster
         )
     };
     state.persist_store(&app, store, path);
-    let inner = state.lock();
-    mystery_code_status(None, &base_url, None, &inner.store.ai_model)
+    mystery_code_status(None, &base_url, None)
 }
 
 #[tauri::command]
@@ -315,13 +304,12 @@ pub async fn recognize_internal_skill_image(
     state: State<'_, AppState>,
 ) -> Result<InternalSkillRecognitionResult, String> {
     validate_image_data_url(&image_data_url)?;
-    let (mystery_code, configured_api_key, base_url, model) = {
+    let (mystery_code, configured_api_key, base_url) = {
         let inner = state.lock();
         (
             inner.store.mystery_code.clone(),
             inner.store.ai_api_key.clone(),
             inner.store.ai_base_url.clone(),
-            inner.store.ai_model.clone(),
         )
     };
     let api_key = match configured_api_key {
@@ -335,7 +323,7 @@ pub async fn recognize_internal_skill_image(
             .await?
         }
     };
-    let request = recognition_request(&image_data_url, &model);
+    let request = recognition_request(&image_data_url);
     let response = send_request(&api_key, &base_url, request).await?;
     let content = extract_response_text(&response)?;
     parse_recognition_content(&content)
@@ -390,9 +378,9 @@ fn resolve_api_key_from_mappings(
     }
 }
 
-async fn test_api_key(api_key: &str, base_url: &str, model: &str) -> Result<(), String> {
+async fn test_api_key(api_key: &str, base_url: &str) -> Result<(), String> {
     let request = json!({
-        "model": model,
+        "model": AI_MODEL,
         "input": [{
             "role": "user",
             "content": [{
@@ -461,19 +449,7 @@ fn normalize_base_url(value: &str) -> Result<String, String> {
     Ok(normalized.to_string())
 }
 
-fn normalize_model(value: &str) -> Result<String, String> {
-    let model = if value.trim().is_empty() {
-        default_ai_model()
-    } else {
-        value.trim().to_string()
-    };
-    if model.len() > 200 || model.chars().any(char::is_control) {
-        return Err("模型名称格式无效。".into());
-    }
-    Ok(model)
-}
-
-fn recognition_request(image_data_url: &str, model: &str) -> Value {
+fn recognition_request(image_data_url: &str) -> Value {
     let mut content = vec![json!({
         "type": "input_text",
         "text": recognition_prompt()
@@ -504,7 +480,7 @@ fn recognition_request(image_data_url: &str, model: &str) -> Value {
     }));
 
     json!({
-        "model": model,
+        "model": AI_MODEL,
         "input": [{ "role": "user", "content": content }],
         "reasoning": { "effort": "none" },
         "max_output_tokens": 4096,
@@ -738,16 +714,11 @@ mod tests {
 
     #[test]
     fn creates_safe_mystery_code_status() {
-        let status = mystery_code_status(
-            Some("mystery-123456"),
-            DEFAULT_AI_BASE_URL,
-            None,
-            "gpt-5.6-terra",
-        );
+        let status = mystery_code_status(Some("mystery-123456"), DEFAULT_AI_BASE_URL, None);
         assert!(status.configured);
         assert_eq!(status.last_four.as_deref(), Some("3456"));
         assert_eq!(status.base_url, DEFAULT_AI_BASE_URL);
-        assert!(!mystery_code_status(None, DEFAULT_AI_BASE_URL, None, "gpt-5.6-terra").configured);
+        assert!(!mystery_code_status(None, DEFAULT_AI_BASE_URL, None).configured);
     }
 
     #[test]
@@ -811,8 +782,8 @@ mod tests {
 
     #[test]
     fn creates_a_responses_api_vision_request() {
-        let request = recognition_request("data:image/png;base64,AQID", "gpt-5.6-terra");
-        assert_eq!(request["model"], "gpt-5.6-terra");
+        let request = recognition_request("data:image/png;base64,AQID");
+        assert_eq!(request["model"], "gpt-5.6-sol");
         assert_eq!(request["store"], false);
         assert_eq!(request["reasoning"]["effort"], "none");
         assert_eq!(request["max_output_tokens"], 4096);

@@ -100,34 +100,26 @@ describe('InternalSkillCalculatorPage', () => {
     await user.click(screen.getByRole('button', { name: '保存并验证' }))
 
     await waitFor(() =>
-      expect(api.saveAndValidateMysteryCode).toHaveBeenCalledWith(
-        'shree',
-        'https://gzxsy.vip',
-        '',
-        'gpt-5.6-terra'
-      )
+      expect(api.saveAndValidateMysteryCode).toHaveBeenCalledWith('shree', 'https://gzxsy.vip', '')
     )
-    expect(await screen.findByText('AI 识别服务验证成功，已保存模型 gpt-5.6-terra。')).toBeVisible()
+    expect(await screen.findByText('AI 识别服务验证成功。')).toBeVisible()
+    expect(screen.queryByLabelText('模型名称')).not.toBeInTheDocument()
   })
 
-  it('accepts a custom API key and model', async () => {
+  it('accepts a custom API key without exposing model configuration', async () => {
     const user = userEvent.setup()
     const api = createMacroApi()
     renderWithUiProviders(<InternalSkillCalculatorPage active api={api} />)
 
     await user.click(screen.getByRole('button', { name: 'AI 配置' }))
     await user.type(screen.getByLabelText('API Key（可选）'), 'sk-custom')
-    const model = screen.getByLabelText('模型名称')
-    await user.clear(model)
-    await user.type(model, 'vision-custom')
     await user.click(screen.getByRole('button', { name: '保存并验证' }))
 
     await waitFor(() =>
       expect(api.saveAndValidateMysteryCode).toHaveBeenCalledWith(
         '',
         'https://gzxsy.vip',
-        'sk-custom',
-        'vision-custom'
+        'sk-custom'
       )
     )
   })
@@ -160,8 +152,7 @@ describe('InternalSkillCalculatorPage', () => {
       expect(api.saveAndValidateMysteryCode).toHaveBeenCalledWith(
         'shree',
         'https://api.example.com/',
-        '',
-        'gpt-5.6-terra'
+        ''
       )
     )
   })
