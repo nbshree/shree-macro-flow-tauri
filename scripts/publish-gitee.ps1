@@ -614,7 +614,7 @@ try {
       -Uri "$apiBase/branches" `
       -Headers $headers `
       -Method Post `
-      -Form @{
+      -Body @{
         refs = 'main'
         branch_name = $updaterBranch
       }
