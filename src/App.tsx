@@ -8,10 +8,12 @@ import { LogPanel } from './components/panels/LogPanel'
 import { ProfilePanel } from './components/panels/ProfilePanel'
 import { SettingsPanel } from './components/panels/SettingsPanel'
 import { ThemeBackground, ThemeDialog } from './components/theme'
+import { UpdateDialog } from './components/update/UpdateDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { InternalSkillCalculatorPage } from './features/internal-skill-calculator'
 import { TowerDemolitionCalculatorPage } from './features/tower-demolition-calculator'
 import { useMacroController } from './hooks/useMacroController'
+import { useAppUpdater } from './hooks/useAppUpdater'
 import { ThemeProvider } from './themes'
 
 function App(): React.JSX.Element {
@@ -19,6 +21,15 @@ function App(): React.JSX.Element {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceView>('macro')
   const [themeDialogOpen, setThemeDialogOpen] = useState(false)
   const themeTriggerRef = useRef<HTMLButtonElement>(null)
+  const updateTriggerRef = useRef<HTMLButtonElement>(null)
+  const installBlockedReason = controller.state.isRunning
+    ? '宏正在执行，请先停止执行再安装更新。'
+    : controller.state.isRecording
+      ? '正在录制流程，请先停止录制再安装更新。'
+      : controller.hasUnsavedChanges
+        ? '当前有未保存的编辑，请先保存或撤销后再安装更新。'
+        : null
+  const updater = useAppUpdater({ installBlockedReason })
 
   return (
     <ThemeProvider appearance={controller.state.appearance}>
@@ -34,8 +45,11 @@ function App(): React.JSX.Element {
                 controller={controller}
                 activeWorkspace={activeWorkspace}
                 themeTriggerRef={themeTriggerRef}
+                updateTriggerRef={updateTriggerRef}
+                isCheckingUpdate={updater.status === 'checking'}
                 onWorkspaceChange={setActiveWorkspace}
                 onOpenTheme={() => setThemeDialogOpen(true)}
+                onCheckForUpdate={() => void updater.checkForUpdate()}
               />
               <section
                 className="workspace-view"
@@ -84,6 +98,7 @@ function App(): React.JSX.Element {
             onApply={(appearance) => controller.updateAppearance(appearance)}
             onOpenChange={setThemeDialogOpen}
           />
+          <UpdateDialog updater={updater} returnFocusRef={updateTriggerRef} />
         </main>
       </TooltipProvider>
     </ThemeProvider>

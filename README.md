@@ -10,7 +10,10 @@
 前往 [Gitee 发行版](https://gitee.com/nbshree/shree-macro-flow-tauri/releases) 下载最新的
 `macro-flow_x.x.x_x64-setup.exe` 并安装。
 
-当前版本：`v1.7.1`
+当前版本：`v1.8.0`
+
+`v1.7.1` 及更早版本尚未内置在线更新，首次升级到支持更新的版本时仍需从本页手动下载安装。
+安装首个支持版本后，后续版本可在应用内手动检查、下载并安装。
 
 ## 功能
 
@@ -23,6 +26,7 @@
 - 倒计时、有限或无限循环、步骤等待和轮次等待
 - 多方案管理、JSON 导入导出和本地持久化
 - 系统托盘、关闭到托盘和单实例运行
+- 应用内手动检查更新、签名校验和在线安装
 - Per-Monitor V2 DPI 感知和多显示器负坐标
 
 ### 新世界内功评估
@@ -128,8 +132,16 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 ## Windows 打包
 
+普通本地构建不生成在线更新签名，也不需要 updater 私钥：
+
 ```powershell
 pnpm tauri:build
+```
+
+正式发行构建会额外生成 Tauri updater 签名，必须在安全环境中配置签名密钥：
+
+```powershell
+pnpm tauri:build:release
 ```
 
 NSIS 安装包输出在：
@@ -137,6 +149,9 @@ NSIS 安装包输出在：
 ```text
 src-tauri/target/release/bundle/nsis/
 ```
+
+正式构建会同时生成 `.exe` 和对应的 `.exe.sig`。普通 `pnpm tauri:build` 仅供本地测试，不能
+用于正式在线更新发行。
 
 完整发布前建议执行：
 

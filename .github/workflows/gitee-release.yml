@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: gitee-release-${{ github.ref }}
+  group: gitee-release
   cancel-in-progress: false
 
 jobs:
@@ -17,9 +17,6 @@ jobs:
     name: Build and publish Windows installer
     runs-on: windows-latest
     timeout-minutes: 45
-
-    env:
-      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
 
     steps:
       - name: Check out tagged source
@@ -60,21 +57,47 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
+      - name: Check Rust
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
       - name: Run Rust Clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
-      - name: Build Windows installer
-        run: pnpm tauri:build
+      - name: Build signed Windows installer and updater artifacts
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw 'GitHub Actions secret TAURI_SIGNING_PRIVATE_KEY is not configured.'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+            throw 'GitHub Actions secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD is not configured.'
+          }
+
+          pnpm tauri:build:release
 
       - name: Publish release to Gitee
         shell: pwsh
         env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:GITEE_TOKEN)) {
             throw 'GitHub Actions secret GITEE_TOKEN is not configured.'
           }
 
-          ./scripts/publish-gitee.ps1 `
-            -Version $env:RELEASE_TAG `
-            -SkipBuild
+          $publishArgs = @{
+            Version = $env:RELEASE_TAG
+            SkipBuild = $true
+          }
+          if ([int]$env:RUN_ATTEMPT -gt 1) {
+            $publishArgs.RepairExisting = $true
+          }
+
+          ./scripts/publish-gitee.ps1 @publishArgs

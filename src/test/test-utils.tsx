@@ -68,6 +68,7 @@ export function createMacroController(overrides: Partial<MacroController> = {}):
     logPanelMaxHeight: 420,
     profileNameInputRef: { current: null },
     isEditingLocked: false,
+    hasUnsavedChanges: false,
     canStopRecording: false,
     enabledPointCount,
     status: { label: '待命', tone: 'muted' },
@@ -166,6 +167,11 @@ export function createMacroApi(state: MacroState = createMacroState()) {
       },
       equippedSkillIds: []
     })),
+    checkForUpdate: vi.fn<MacroAPI['checkForUpdate']>(async () => ({
+      currentVersion: '1.7.1',
+      update: null
+    })),
+    installUpdate: vi.fn<MacroAPI['installUpdate']>(async () => {}),
     onState: vi.fn((_callback: (nextState: MacroState) => void) => () => undefined),
     window: {
       minimize: vi.fn(async () => undefined),

@@ -17,18 +17,22 @@ function renderHeader(
     state: createMacroState({ appearance: { themeId, cleanMode: false } })
   })
   const onWorkspaceChange = vi.fn()
+  const onCheckForUpdate = vi.fn()
 
   renderWithUiProviders(
     <WorkspaceHeader
       controller={controller}
       activeWorkspace={activeWorkspace}
       themeTriggerRef={createRef<HTMLButtonElement>()}
+      updateTriggerRef={createRef<HTMLButtonElement>()}
+      isCheckingUpdate={false}
       onWorkspaceChange={onWorkspaceChange}
       onOpenTheme={onOpenTheme}
+      onCheckForUpdate={onCheckForUpdate}
     />
   )
 
-  return { onOpenTheme, onWorkspaceChange }
+  return { onCheckForUpdate, onOpenTheme, onWorkspaceChange }
 }
 
 describe('WorkspaceHeader', () => {
@@ -54,6 +58,16 @@ describe('WorkspaceHeader', () => {
     await user.click(screen.getByRole('button', { name: '主题：龙吟' }))
 
     expect(onOpenTheme).toHaveBeenCalledTimes(1)
+  })
+
+  it('checks for updates only when the update button is clicked', async () => {
+    const user = userEvent.setup()
+    const { onCheckForUpdate } = renderHeader('longyin')
+
+    expect(onCheckForUpdate).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: '检查更新' }))
+
+    expect(onCheckForUpdate).toHaveBeenCalledTimes(1)
   })
 
   it('switches to the calculator workspace from the top-level tabs', async () => {

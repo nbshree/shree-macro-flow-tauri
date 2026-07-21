@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
@@ -65,6 +65,23 @@ export type InternalSkillRecognitionResult = {
     constitution: number
   }
   equippedSkillIds: string[]
+}
+
+export type AppUpdateInfo = {
+  version: string
+  notes: string
+  publishedAt: string | null
+}
+
+export type AppUpdateCheckResult = {
+  currentVersion: string
+  update: AppUpdateInfo | null
+}
+
+export type AppUpdateDownloadEvent = {
+  event: 'started' | 'progress' | 'finished'
+  downloaded: number
+  total: number | null
 }
 
 export type MacroState = {
@@ -137,6 +154,8 @@ export type MacroAPI = {
   ) => Promise<MysteryCodeStatus>
   deleteMysteryCode: () => Promise<MysteryCodeStatus>
   recognizeInternalSkillImage: (imageDataUrl: string) => Promise<InternalSkillRecognitionResult>
+  checkForUpdate: () => Promise<AppUpdateCheckResult>
+  installUpdate: (onEvent: (event: AppUpdateDownloadEvent) => void) => Promise<void>
   onState: (callback: (state: MacroState) => void) => () => void
   window: WindowControlsAPI
 }
@@ -249,6 +268,12 @@ export const macroApi: MacroAPI = {
     callTauri(() =>
       invoke<InternalSkillRecognitionResult>('recognize_internal_skill_image', { imageDataUrl })
     ),
+  checkForUpdate: () => callTauri(() => invoke<AppUpdateCheckResult>('check_for_update')),
+  installUpdate: (onEvent) => {
+    const eventChannel = new Channel<AppUpdateDownloadEvent>()
+    eventChannel.onmessage = onEvent
+    return callTauri(() => invoke<void>('install_update', { onEvent: eventChannel }))
+  },
   onState: (callback) => {
     let disposed = false
     let unlisten: UnlistenFn | undefined

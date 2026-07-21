@@ -1,4 +1,12 @@
-import { Calculator, Castle, Palette, Sparkles, Workflow } from 'lucide-react'
+import {
+  Calculator,
+  Castle,
+  LoaderCircle,
+  Palette,
+  RefreshCw,
+  Sparkles,
+  Workflow
+} from 'lucide-react'
 import type { KeyboardEvent, RefObject } from 'react'
 
 import type { MacroController } from '../../hooks/useMacroController'
@@ -10,8 +18,11 @@ type WorkspaceHeaderProps = {
   controller: MacroController
   activeWorkspace: WorkspaceView
   themeTriggerRef: RefObject<HTMLButtonElement | null>
+  updateTriggerRef: RefObject<HTMLButtonElement | null>
+  isCheckingUpdate: boolean
   onWorkspaceChange: (workspace: WorkspaceView) => void
   onOpenTheme: () => void
+  onCheckForUpdate: () => void
 }
 
 export type WorkspaceView = 'macro' | 'calculator' | 'towerCalculator'
@@ -42,8 +53,11 @@ export function WorkspaceHeader({
   controller,
   activeWorkspace,
   themeTriggerRef,
+  updateTriggerRef,
+  isCheckingUpdate,
   onWorkspaceChange,
-  onOpenTheme
+  onOpenTheme,
+  onCheckForUpdate
 }: WorkspaceHeaderProps) {
   const { state, status } = controller
   const appearance = normalizeAppearance(state.appearance)
@@ -136,6 +150,22 @@ export function WorkspaceHeader({
           <span aria-hidden="true" />
           {status.label}
         </Badge>
+        <Button
+          aria-label={isCheckingUpdate ? '正在检查更新' : '检查更新'}
+          className="update-trigger rounded-full"
+          disabled={isCheckingUpdate}
+          ref={updateTriggerRef}
+          type="button"
+          variant="outline"
+          onClick={onCheckForUpdate}
+        >
+          {isCheckingUpdate ? (
+            <LoaderCircle aria-hidden="true" className="update-trigger__spinner" size={17} />
+          ) : (
+            <RefreshCw aria-hidden="true" size={17} />
+          )}
+          <span>{isCheckingUpdate ? '检查中' : '检查更新'}</span>
+        </Button>
         <Button
           className="theme-trigger rounded-full"
           ref={themeTriggerRef}

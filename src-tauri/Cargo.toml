@@ -1,6 +1,6 @@
 [package]
 name = "macro-flow"
-version = "1.7.1"
+version = "1.8.0"
 description = "A lightweight Windows macro workflow tool"
 authors = ["Shree Macro Flow"]
 edition = "2024"
@@ -27,6 +27,8 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+time = { version = "0.3", features = ["formatting"] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_UI_HiDpi",

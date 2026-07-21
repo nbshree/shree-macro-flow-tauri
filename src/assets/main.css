@@ -734,6 +734,7 @@
  * preserve the themed dimensions and translucent surfaces over generated utility classes.
  */
 [data-slot='badge'].status-pill,
+[data-slot='button'].update-trigger,
 [data-slot='button'].theme-trigger {
   display: inline-flex;
   height: 36px;
@@ -782,6 +783,167 @@
     color var(--motion-fast) var(--ease-standard),
     background-color var(--motion-fast) var(--ease-standard),
     transform var(--motion-fast) var(--ease-standard);
+}
+
+[data-slot='button'].update-trigger {
+  padding: 0 13px;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+[data-slot='button'].update-trigger:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  background: var(--surface-hover);
+  color: var(--color-primary);
+}
+
+.update-trigger__spinner,
+.update-dialog__spinner {
+  animation: update-spinner 0.8s linear infinite;
+}
+
+[data-slot='dialog-content'].update-dialog {
+  width: min(460px, calc(100% - 32px));
+  gap: 20px;
+  padding: 24px;
+}
+
+.update-dialog__state,
+.update-dialog__download,
+.update-dialog__heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+}
+
+.update-dialog__state > svg,
+.update-dialog__download > svg,
+.update-dialog__icon {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-primary) 13%, var(--surface-panel-strong));
+  color: var(--color-primary);
+}
+
+.update-dialog__state > svg,
+.update-dialog__download > svg {
+  padding: 9px;
+}
+
+.update-dialog__icon > svg {
+  width: 20px;
+  height: 20px;
+}
+
+.update-dialog__state--success > svg {
+  background: color-mix(in srgb, var(--color-success) 14%, var(--surface-panel-strong));
+  color: var(--color-success);
+}
+
+.update-dialog__state--error > svg {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.update-dialog__heading > div,
+.update-dialog__state [data-slot='dialog-header'],
+.update-dialog__download [data-slot='dialog-header'] {
+  min-width: 0;
+  align-self: center;
+}
+
+.update-dialog__notes {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.update-dialog__notes:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.update-dialog__notes h3,
+.update-dialog__notes p,
+.update-dialog__progress-label {
+  margin: 0;
+}
+
+.update-dialog__notes h3 {
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.update-dialog__notes p {
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.update-dialog__warning {
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--border-default));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--surface-panel-strong));
+}
+
+.update-dialog__download {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+}
+
+.update-dialog__download > svg {
+  grid-row: 1;
+}
+
+.update-dialog__progress,
+.update-dialog__progress-label {
+  grid-column: 1 / -1;
+}
+
+.update-dialog__progress {
+  height: 8px;
+  overflow: hidden;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
+.update-dialog__progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+  transition: width var(--motion-normal) var(--ease-standard);
+}
+
+.update-dialog__progress-label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.update-dialog__progress-label strong {
+  color: var(--color-primary);
+}
+
+@keyframes update-spinner {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 [data-slot='button'].theme-trigger:hover {
@@ -970,7 +1132,10 @@
 
   .flow-table__row,
   .log-resize-handle > span,
-  .theme-log-character__image {
+  .theme-log-character__image,
+  .update-trigger__spinner,
+  .update-dialog__spinner {
     transition: none;
+    animation: none;
   }
 }

@@ -120,6 +120,7 @@ export type MacroController = {
   logPanelMaxHeight: number
   profileNameInputRef: RefObject<HTMLInputElement | null>
   isEditingLocked: boolean
+  hasUnsavedChanges: boolean
   canStopRecording: boolean
   enabledPointCount: number
   status: { label: string; tone: 'warning' | 'success' | 'primary' | 'muted' }
@@ -301,6 +302,52 @@ export function useMacroController(): MacroController {
   }, [])
 
   const isEditingLocked = state.isRecording || state.isRunning
+  const activeProfileName =
+    state.profiles.find((profile) => profile.id === state.activeProfileId)?.name ?? ''
+  const hasUnsavedChanges = useMemo(() => {
+    const settingsChanged =
+      draftSettings.clickIntervalSeconds !== state.settings.clickIntervalSeconds ||
+      draftSettings.loopIntervalSeconds !== state.settings.loopIntervalSeconds ||
+      draftSettings.startDelaySeconds !== state.settings.startDelaySeconds ||
+      draftSettings.loopMode !== state.settings.loopMode ||
+      draftSettings.loopCount !== state.settings.loopCount ||
+      draftSettings.hotkeys.capture !== state.settings.hotkeys.capture ||
+      draftSettings.hotkeys.start !== state.settings.hotkeys.start ||
+      draftSettings.hotkeys.stop !== state.settings.hotkeys.stop
+
+    const pointsChanged = state.points.some((point) => {
+      const draft = draftPoints[point.id]
+      return (
+        draft !== undefined &&
+        (draft.label !== point.label ||
+          draft.action !== point.action ||
+          draft.enabled !== point.enabled ||
+          draft.x !== point.x ||
+          draft.y !== point.y ||
+          draft.key !== point.key ||
+          draft.delaySeconds !== point.delaySeconds ||
+          draft.modifiers.length !== point.modifiers.length ||
+          draft.modifiers.some((modifier, index) => modifier !== point.modifiers[index]))
+      )
+    })
+
+    return (
+      settingsChanged ||
+      pointsChanged ||
+      (isAddingKeyStep && Boolean(keyDraft.key)) ||
+      (isRenamingProfile && profileNameInput !== activeProfileName)
+    )
+  }, [
+    activeProfileName,
+    draftPoints,
+    draftSettings,
+    isAddingKeyStep,
+    isRenamingProfile,
+    keyDraft.key,
+    profileNameInput,
+    state.points,
+    state.settings
+  ])
   const canStopRecording = state.isRecording
   const enabledPointCount = state.points.reduce((count, point) => count + Number(point.enabled), 0)
   const status = useMemo<MacroController['status']>(() => {
@@ -543,6 +590,7 @@ export function useMacroController(): MacroController {
     logPanelMaxHeight,
     profileNameInputRef,
     isEditingLocked,
+    hasUnsavedChanges,
     canStopRecording,
     enabledPointCount,
     status,

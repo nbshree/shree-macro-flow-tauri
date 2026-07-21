@@ -205,6 +205,45 @@ describe('useMacroController', () => {
     unmount()
   })
 
+  it('reports unsaved settings and point edits', async () => {
+    const initialState = createState()
+    initialState.points = [
+      {
+        id: 'point-1',
+        label: '原步骤',
+        action: 'click',
+        enabled: true,
+        x: 10,
+        y: 20,
+        key: '',
+        modifiers: [],
+        delaySeconds: 0.5,
+        createdAt: 1
+      }
+    ]
+    installMacroApi(initialState)
+    const { result, unmount } = renderHook(() => useMacroController())
+
+    await waitFor(() => expect(result.current.state.points).toHaveLength(1))
+    expect(result.current.hasUnsavedChanges).toBe(false)
+
+    act(() => {
+      result.current.setDraftSettings((current) => ({
+        ...current,
+        clickIntervalSeconds: 3
+      }))
+    })
+    expect(result.current.hasUnsavedChanges).toBe(true)
+
+    act(() => {
+      result.current.setDraftSettings(result.current.state.settings)
+      result.current.updateDraftPoint('point-1', { label: '尚未保存的名称' })
+    })
+    expect(result.current.hasUnsavedChanges).toBe(true)
+
+    unmount()
+  })
+
   it('clamps an enlarged log panel when the window becomes shorter', async () => {
     installMacroApi(createState())
     const originalInnerHeight = window.innerHeight

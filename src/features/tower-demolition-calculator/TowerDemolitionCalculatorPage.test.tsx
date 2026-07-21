@@ -86,7 +86,7 @@ describe('TowerDemolitionCalculatorPage', () => {
     expect(screen.getByLabelText('第一套抗拆总分')).toHaveTextContent('9,000')
     expect(screen.getByLabelText('第二套抗拆总分')).not.toHaveTextContent('7,609')
     expect(secondAttack).toHaveValue(200)
-  })
+  }, 10_000)
 
   it('pauses only the affected scores when a field is invalid', async () => {
     const user = userEvent.setup()

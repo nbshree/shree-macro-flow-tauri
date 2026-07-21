@@ -6,6 +6,7 @@ mod model;
 mod shortcuts;
 mod state;
 mod store;
+mod updater;
 
 use std::io;
 
@@ -23,11 +24,13 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let profile_file = store::profile_file_path(app.handle()).map_err(io::Error::other)?;
             let loaded = store::load_profiles(&profile_file);
             let notices = loaded.notices;
             app.manage(AppState::new(profile_file, loaded.store));
+            app.manage(updater::PendingUpdate::default());
 
             let state = app.state::<AppState>();
             state.persist_current_store(app.handle());
@@ -82,6 +85,8 @@ pub fn run() {
             internal_skill_ai::save_and_validate_mystery_code,
             internal_skill_ai::delete_mystery_code,
             internal_skill_ai::recognize_internal_skill_image,
+            updater::check_for_update,
+            updater::install_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Tauri application");
