@@ -17,6 +17,7 @@ import { Button } from '../ui/button'
 type WorkspaceHeaderProps = {
   controller: MacroController
   activeWorkspace: WorkspaceView
+  appVersion: string | null
   themeTriggerRef: RefObject<HTMLButtonElement | null>
   updateTriggerRef: RefObject<HTMLButtonElement | null>
   isCheckingUpdate: boolean
@@ -52,6 +53,7 @@ const workspaceLabels: Record<WorkspaceView, { title: string; subtitle: string }
 export function WorkspaceHeader({
   controller,
   activeWorkspace,
+  appVersion,
   themeTriggerRef,
   updateTriggerRef,
   isCheckingUpdate,
@@ -150,6 +152,9 @@ export function WorkspaceHeader({
           <span aria-hidden="true" />
           {status.label}
         </Badge>
+        <span className="app-version" aria-label={`当前版本 v${appVersion ?? '未知'}`}>
+          v{appVersion ?? '—'}
+        </span>
         <Button
           aria-label={isCheckingUpdate ? '正在检查更新' : '检查更新'}
           className="update-trigger rounded-full"

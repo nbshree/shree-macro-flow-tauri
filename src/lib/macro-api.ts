@@ -122,6 +122,7 @@ export type WindowControlsAPI = {
 }
 
 export type MacroAPI = {
+  getAppVersion: () => Promise<string>
   getState: () => Promise<MacroState>
   startRecording: () => Promise<MacroState>
   stopRecording: () => Promise<MacroState>
@@ -230,6 +231,7 @@ const windowControls: WindowControlsAPI = {
 }
 
 export const macroApi: MacroAPI = {
+  getAppVersion: () => callTauri(() => invoke<string>('get_app_version')),
   getState: () => invokeState('get_state'),
   startRecording: () => invokeState('start_recording'),
   stopRecording: () => invokeState('stop_recording'),

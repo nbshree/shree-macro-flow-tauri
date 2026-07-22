@@ -26,6 +26,11 @@ pub fn get_state(state: State<'_, AppState>) -> MacroState {
 }
 
 #[tauri::command]
+pub fn get_app_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+#[tauri::command]
 pub fn update_appearance(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1031,6 +1036,11 @@ const DEFAULT_IMPORT_NAME: &str = "导入方案";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn app_version_matches_the_package_version() {
+        assert_eq!(get_app_version(), env!("CARGO_PKG_VERSION"));
+    }
 
     fn point(id: &str) -> Point {
         Point {

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { WindowTitleBar } from './components/layout/WindowTitleBar'
 import { WorkspaceHeader, type WorkspaceView } from './components/layout/WorkspaceHeader'
@@ -20,6 +20,7 @@ function App(): React.JSX.Element {
   const controller = useMacroController()
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceView>('macro')
   const [themeDialogOpen, setThemeDialogOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState<string | null>(null)
   const themeTriggerRef = useRef<HTMLButtonElement>(null)
   const updateTriggerRef = useRef<HTMLButtonElement>(null)
   const installBlockedReason = controller.state.isRunning
@@ -30,6 +31,23 @@ function App(): React.JSX.Element {
         ? '当前有未保存的编辑，请先保存或撤销后再安装更新。'
         : null
   const updater = useAppUpdater({ installBlockedReason })
+
+  useEffect(() => {
+    let disposed = false
+
+    void window.api
+      .getAppVersion()
+      .then((version) => {
+        if (!disposed) setAppVersion(version)
+      })
+      .catch((error: unknown) => {
+        if (!disposed) console.error('读取应用版本失败', error)
+      })
+
+    return () => {
+      disposed = true
+    }
+  }, [])
 
   return (
     <ThemeProvider appearance={controller.state.appearance}>
@@ -44,6 +62,7 @@ function App(): React.JSX.Element {
               <WorkspaceHeader
                 controller={controller}
                 activeWorkspace={activeWorkspace}
+                appVersion={appVersion}
                 themeTriggerRef={themeTriggerRef}
                 updateTriggerRef={updateTriggerRef}
                 isCheckingUpdate={updater.status === 'checking'}

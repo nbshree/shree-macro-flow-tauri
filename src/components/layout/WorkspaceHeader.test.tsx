@@ -23,6 +23,7 @@ function renderHeader(
     <WorkspaceHeader
       controller={controller}
       activeWorkspace={activeWorkspace}
+      appVersion="1.8.1"
       themeTriggerRef={createRef<HTMLButtonElement>()}
       updateTriggerRef={createRef<HTMLButtonElement>()}
       isCheckingUpdate={false}
@@ -36,6 +37,12 @@ function renderHeader(
 }
 
 describe('WorkspaceHeader', () => {
+  it('shows the current app version beside the update action', () => {
+    renderHeader('longyin')
+
+    expect(screen.getByLabelText('当前版本 v1.8.1')).toHaveTextContent('v1.8.1')
+  })
+
   it.each([
     ['longyin', '主题：龙吟'],
     ['chaoguang', '主题：潮光'],

@@ -12,7 +12,7 @@
 - 正式构建覆盖配置：`src-tauri/tauri.release.conf.json`
 - 在线更新源：<https://gitee.com/nbshree/shree-macro-flow-tauri/raw/updater-feed/latest.json>
 - 标签格式：`v主版本.次版本.修订号`，例如 `v1.8.0`
-- Gitee 安装包名称：`macro-flow_1.8.0_x64-setup.exe`
+- Gitee 安装包名称：`macro-flow_1.8.1_x64-setup.exe`
 
 Gitee Go 官方云构建环境是 Linux，不能可靠生成本项目的 Windows NSIS 安装包。因此使用
 GitHub Actions 的 `windows-latest` 构建，再通过 Gitee API 把安装包、Tauri 更新签名和

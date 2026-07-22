@@ -104,6 +104,7 @@ export function createMacroController(overrides: Partial<MacroController> = {}):
 
 export function createMacroApi(state: MacroState = createMacroState()) {
   return {
+    getAppVersion: vi.fn<MacroAPI['getAppVersion']>(async () => '1.8.1'),
     getState: vi.fn(async () => state),
     startRecording: vi.fn(async () => state),
     stopRecording: vi.fn(async () => state),
