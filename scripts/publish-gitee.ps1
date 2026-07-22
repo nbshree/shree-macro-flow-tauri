@@ -641,6 +641,7 @@ try {
       -Uri "$apiBase/contents/$updaterFeedPath" `
       -Headers $headers `
       -Method Post `
+      -ContentType 'application/x-www-form-urlencoded' `
       -Body $feedCommit | Out-Null
   } else {
     $feedCommit.sha = [string]$currentFeedFile.sha
@@ -648,6 +649,7 @@ try {
       -Uri "$apiBase/contents/$updaterFeedPath" `
       -Headers $headers `
       -Method Put `
+      -ContentType 'application/x-www-form-urlencoded' `
       -Body $feedCommit | Out-Null
   }
 
