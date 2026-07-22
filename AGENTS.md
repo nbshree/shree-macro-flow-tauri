@@ -49,6 +49,30 @@ TypeScript 和 React 使用 2 空格、单引号、无分号、每行不超过 1
 公开的版本标签。只有两端代码与标签同步、自动工作流成功、Gitee 附件可下载且校验值正确时，
 发版任务才算完成。
 
+## 版本与在线更新
+
+- 界面显示的应用版本必须从 Rust 编译包版本读取，禁止在 React 中硬编码版本号。
+- `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 和
+  `src-tauri/Cargo.lock` 中的应用版本必须保持一致。
+- updater feed 只能向更高版本前进；同版本修复必须显式使用发布脚本的修复模式。
+- 已公开标签中的发布脚本存在问题时，应在 `main` 修复脚本，再通过 `workflow_dispatch`
+  修复原发行版，不得移动或重建标签。
+- Gitee Contents API 的 PUT 请求必须显式设置受支持的 Content-Type，不能依赖 PowerShell
+  默认行为。
+- 发布验收不能只查看 GitHub Actions 状态；必须匿名下载 EXE、SIG、Release `latest.json`
+  和公开 updater feed，并核对安装包实际 SHA-256、发行说明 SHA-256、下载 URL 和签名内容。
+
+## 测试稳定性
+
+- 在资源紧张的 Windows 环境中，避免并行运行完整前端测试和 Rust 编译。重型页面测试可能因
+  CPU 争用超过 Vitest 默认超时；发生纯超时时应先单独重跑，不得直接视为功能失败或随意提高
+  全局超时。
+
+## 临时验证文件
+
+- 本地升级测试配置和公开附件验证文件只能放在系统临时目录，不得进入仓库。
+- 验证完成后删除临时配置和下载文件，并确认 `git status --short` 没有意外修改或未跟踪文件。
+
 ## 安全提示
 
 不要向前端开放通用文件系统、Shell 或任意命令执行权限。Win32 输入只接受经过清洗的坐标和支持的虚拟键。应用默认使用普通用户权限，不应通过默认管理员权限绕过 Windows UIPI。
