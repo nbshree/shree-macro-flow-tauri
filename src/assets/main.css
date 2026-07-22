@@ -733,7 +733,6 @@
  * Business-specific shadcn overrides intentionally stay outside cascade layers so they can
  * preserve the themed dimensions and translucent surfaces over generated utility classes.
  */
-[data-slot='badge'].status-pill,
 [data-slot='button'].update-trigger,
 [data-slot='button'].theme-trigger {
   display: inline-flex;
@@ -748,32 +747,6 @@
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
-}
-
-[data-slot='badge'].status-pill {
-  overflow: visible;
-  padding: 0 13px;
-}
-
-[data-slot='badge'].status-pill > span {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--text-muted);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-muted) 16%, transparent);
-}
-
-[data-slot='badge'].status-pill[data-tone='primary'] > span {
-  background: var(--color-primary);
-}
-
-[data-slot='badge'].status-pill[data-tone='success'] > span {
-  background: var(--color-success);
-}
-
-[data-slot='badge'].status-pill[data-tone='warning'] > span {
-  background: var(--color-accent);
 }
 
 .app-version {
@@ -1094,10 +1067,6 @@
   .workspace-grid {
     grid-template-columns: 288px minmax(0, 1fr);
     gap: 10px;
-  }
-
-  [data-slot='badge'].status-pill {
-    display: none;
   }
 
   .flow-grid {

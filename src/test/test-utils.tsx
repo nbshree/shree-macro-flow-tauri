@@ -3,8 +3,12 @@ import type { ReactElement, ReactNode } from 'react'
 import { vi } from 'vitest'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
+import {
+  emptyGameRecorderState,
+  type GameRecorderController
+} from '@/hooks/useGameRecorderController'
 import { emptyState, type MacroController } from '@/hooks/useMacroController'
-import type { MacroAPI, MacroPointPatch, MacroState } from '@/lib/macro-api'
+import type { GameRecorderState, MacroAPI, MacroPointPatch, MacroState } from '@/lib/macro-api'
 
 export function createMacroState(overrides: Partial<MacroState> = {}): MacroState {
   const state: MacroState = {
@@ -102,7 +106,88 @@ export function createMacroController(overrides: Partial<MacroController> = {}):
   return { ...controller, ...overrides, state, draftSettings, enabledPointCount }
 }
 
-export function createMacroApi(state: MacroState = createMacroState()) {
+export function createGameRecorderState(
+  overrides: Partial<GameRecorderState> = {}
+): GameRecorderState {
+  return {
+    ...emptyGameRecorderState,
+    ...overrides,
+    recordings: overrides.recordings ?? [],
+    hotkeys: { ...emptyGameRecorderState.hotkeys, ...overrides.hotkeys },
+    hotkeyErrors: overrides.hotkeyErrors ?? []
+  }
+}
+
+export function createGameRecorderController(
+  overrides: Partial<GameRecorderController> = {}
+): GameRecorderController {
+  const state = overrides.state ?? createGameRecorderState()
+  const selectedRecording =
+    overrides.selectedRecording ??
+    state.recordings.find((recording) => recording.id === state.activeRecordingId) ??
+    null
+  const draftHotkeys = overrides.draftHotkeys ?? { ...state.hotkeys }
+  const draftPlayback = overrides.draftPlayback ??
+    selectedRecording?.playback ?? {
+      speed: 1,
+      loopMode: 'count',
+      loopCount: 1,
+      loopIntervalSeconds: 1
+    }
+
+  const controller: GameRecorderController = {
+    state,
+    selectedRecording,
+    draftHotkeys,
+    draftPlayback,
+    setDraftPlayback: vi.fn<GameRecorderController['setDraftPlayback']>(),
+    nameInput: selectedRecording?.name ?? '',
+    setNameInput: vi.fn<GameRecorderController['setNameInput']>(),
+    capturingHotkey: null,
+    pendingAction: null,
+    actionError: null,
+    blockedByMacro: false,
+    isBusy: state.activity !== 'idle',
+    isIdle: state.activity === 'idle',
+    hasHotkeyChanges: false,
+    hasPlaybackChanges: false,
+    hasNameChanges: false,
+    targetMismatchPromptOpen: false,
+    status: { label: '待命', tone: 'muted' },
+    progressLabel: '尚未开始',
+    startRecording: vi.fn<GameRecorderController['startRecording']>().mockResolvedValue(undefined),
+    stopActivity: vi.fn<GameRecorderController['stopActivity']>().mockResolvedValue(undefined),
+    startPlayback: vi.fn<GameRecorderController['startPlayback']>().mockResolvedValue(undefined),
+    selectRecording: vi
+      .fn<GameRecorderController['selectRecording']>()
+      .mockResolvedValue(undefined),
+    renameSelected: vi.fn<GameRecorderController['renameSelected']>().mockResolvedValue(undefined),
+    deleteSelected: vi.fn<GameRecorderController['deleteSelected']>().mockResolvedValue(undefined),
+    saveHotkeys: vi.fn<GameRecorderController['saveHotkeys']>().mockResolvedValue(undefined),
+    savePlayback: vi.fn<GameRecorderController['savePlayback']>().mockResolvedValue(undefined),
+    setPlaybackSpeed: vi.fn<GameRecorderController['setPlaybackSpeed']>(),
+    setPlaybackLoopMode: vi.fn<GameRecorderController['setPlaybackLoopMode']>(),
+    updatePlaybackNumber: vi.fn<GameRecorderController['updatePlaybackNumber']>(),
+    startHotkeyCapture: vi.fn<GameRecorderController['startHotkeyCapture']>(),
+    stopHotkeyCapture: vi.fn<GameRecorderController['stopHotkeyCapture']>(),
+    captureHotkey: vi.fn<GameRecorderController['captureHotkey']>(),
+    dismissTargetMismatch: vi.fn<GameRecorderController['dismissTargetMismatch']>()
+  }
+
+  return {
+    ...controller,
+    ...overrides,
+    state,
+    selectedRecording,
+    draftHotkeys,
+    draftPlayback
+  }
+}
+
+export function createMacroApi(
+  state: MacroState = createMacroState(),
+  gameRecorderState: GameRecorderState = createGameRecorderState()
+) {
   return {
     getAppVersion: vi.fn<MacroAPI['getAppVersion']>(async () => '1.8.1'),
     getState: vi.fn(async () => state),
@@ -174,6 +259,20 @@ export function createMacroApi(state: MacroState = createMacroState()) {
     })),
     installUpdate: vi.fn<MacroAPI['installUpdate']>(async () => {}),
     onState: vi.fn((_callback: (nextState: MacroState) => void) => () => undefined),
+    getGameRecorderState: vi.fn(async () => gameRecorderState),
+    startGameRecording: vi.fn(async () => gameRecorderState),
+    stopGameActivity: vi.fn(async () => gameRecorderState),
+    startGamePlayback: vi.fn(async (_allowTargetMismatch?: boolean) => gameRecorderState),
+    selectGameRecording: vi.fn(async (_id: string) => gameRecorderState),
+    renameGameRecording: vi.fn(async (_id: string, _name: string) => gameRecorderState),
+    deleteGameRecording: vi.fn(async (_id: string) => gameRecorderState),
+    updateGameRecorderHotkeys: vi.fn(
+      async (_hotkeys: GameRecorderState['hotkeys']) => gameRecorderState
+    ),
+    updateGamePlaybackSettings: vi.fn(async (_id: string, _settings) => gameRecorderState),
+    onGameRecorderState: vi.fn(
+      (_callback: (nextState: GameRecorderState) => void) => () => undefined
+    ),
     window: {
       minimize: vi.fn(async () => undefined),
       toggleMaximize: vi.fn(async () => undefined),

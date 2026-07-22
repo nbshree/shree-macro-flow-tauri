@@ -3,6 +3,10 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use crate::{
     commands::{capture_point_internal, start_run_internal, stop_run_internal},
+    game_recorder::{
+        self, GameRecorder, start_game_playback_internal, start_game_recording_internal,
+        stop_game_activity_from_hotkey,
+    },
     model::EMERGENCY_STOP_HOTKEY,
     state::AppState,
 };
@@ -15,6 +19,7 @@ pub fn register_shortcuts(app: &AppHandle) {
         .settings
         .hotkeys
         .clone();
+    let game_hotkeys = game_recorder::hotkeys(app);
     let manager = app.global_shortcut();
     let mut errors = Vec::new();
 
@@ -25,6 +30,7 @@ pub fn register_shortcuts(app: &AppHandle) {
     if let Err(error) = manager.on_shortcut(EMERGENCY_STOP_HOTKEY, |app, _, event| {
         if event.state == ShortcutState::Pressed {
             stop_run_internal(app);
+            stop_game_activity_from_hotkey(app, EMERGENCY_STOP_HOTKEY);
         }
     }) {
         errors.push(format!(
@@ -59,8 +65,39 @@ pub fn register_shortcuts(app: &AppHandle) {
         },
         &mut errors,
     );
+    register_one(
+        app,
+        &game_hotkeys.record_start,
+        "开始游戏录制",
+        |app| {
+            let _ = start_game_recording_internal(app);
+        },
+        &mut errors,
+    );
+    register_one(
+        app,
+        &game_hotkeys.stop,
+        "停止游戏任务",
+        |app| {
+            let accelerator = game_recorder::hotkeys(app).stop;
+            stop_game_activity_from_hotkey(app, &accelerator);
+        },
+        &mut errors,
+    );
+    register_one(
+        app,
+        &game_hotkeys.playback_start,
+        "开始游戏回放",
+        |app| {
+            let _ = start_game_playback_internal(app, false);
+        },
+        &mut errors,
+    );
 
-    app.state::<AppState>().replace_hotkey_errors(app, errors);
+    app.state::<AppState>()
+        .replace_hotkey_errors(app, errors.clone());
+    app.state::<GameRecorder>()
+        .replace_hotkey_errors(app, errors);
 }
 
 pub fn unregister_all(app: &AppHandle) {

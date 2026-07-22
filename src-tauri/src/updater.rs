@@ -242,7 +242,11 @@ fn install_when_macro_idle(
     // 避免宏在最终检查与当前进程退出之间抢跑。
     let state = app.state::<AppState>();
     let inner = state.lock();
-    macro_idle_result(inner.state.is_running, inner.state.is_recording)?;
+    macro_idle_result(
+        inner.state.is_running,
+        inner.state.is_recording,
+        inner.game_activity,
+    )?;
 
     update.install(bytes).map_err(|error| {
         AppUpdateError::new(
@@ -292,10 +296,18 @@ fn update_info_from_parts(
 fn ensure_macro_idle(app: &AppHandle) -> Result<(), AppUpdateError> {
     let state = app.state::<AppState>();
     let inner = state.lock();
-    macro_idle_result(inner.state.is_running, inner.state.is_recording)
+    macro_idle_result(
+        inner.state.is_running,
+        inner.state.is_recording,
+        inner.game_activity,
+    )
 }
 
-fn macro_idle_result(is_running: bool, is_recording: bool) -> Result<(), AppUpdateError> {
+fn macro_idle_result(
+    is_running: bool,
+    is_recording: bool,
+    game_activity: bool,
+) -> Result<(), AppUpdateError> {
     if is_recording {
         Err(AppUpdateError::new(
             AppUpdateErrorCode::MacroBusy,
@@ -305,6 +317,11 @@ fn macro_idle_result(is_running: bool, is_recording: bool) -> Result<(), AppUpda
         Err(AppUpdateError::new(
             AppUpdateErrorCode::MacroBusy,
             "宏正在执行，不能安装更新，请先停止执行。",
+        ))
+    } else if game_activity {
+        Err(AppUpdateError::new(
+            AppUpdateErrorCode::MacroBusy,
+            "游戏录制或回放正在进行，不能安装更新，请先停止当前任务。",
         ))
     } else {
         Ok(())
@@ -437,16 +454,22 @@ mod tests {
 
     #[test]
     fn running_or_recording_macros_block_installation() {
-        assert!(macro_idle_result(false, false).is_ok());
+        assert!(macro_idle_result(false, false, false).is_ok());
         assert_eq!(
-            macro_idle_result(true, false)
+            macro_idle_result(true, false, false)
                 .expect_err("running must be blocked")
                 .code,
             AppUpdateErrorCode::MacroBusy
         );
         assert_eq!(
-            macro_idle_result(false, true)
+            macro_idle_result(false, true, false)
                 .expect_err("recording must be blocked")
+                .code,
+            AppUpdateErrorCode::MacroBusy
+        );
+        assert_eq!(
+            macro_idle_result(false, false, true)
+                .expect_err("game activity must be blocked")
                 .code,
             AppUpdateErrorCode::MacroBusy
         );

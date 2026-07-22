@@ -1,8 +1,10 @@
 mod commands;
 mod desktop;
+mod game_recorder;
 mod input;
 mod internal_skill_ai;
 mod model;
+mod raw_input;
 mod shortcuts;
 mod state;
 mod store;
@@ -28,13 +30,21 @@ pub fn run() {
         .setup(|app| {
             let profile_file = store::profile_file_path(app.handle()).map_err(io::Error::other)?;
             let loaded = store::load_profiles(&profile_file);
-            let notices = loaded.notices;
+            let mut notices = loaded.notices;
+            let game_storage =
+                game_recorder::storage_directory(app.handle()).map_err(io::Error::other)?;
+            let (game_state, game_notices) = game_recorder::GameRecorder::load(game_storage);
+            notices.extend(game_notices);
             app.manage(AppState::new(profile_file, loaded.store));
+            app.manage(game_state);
             app.manage(updater::PendingUpdate::default());
 
             let state = app.state::<AppState>();
             state.persist_current_store(app.handle());
             desktop::create_tray(app.handle())?;
+            if let Err(error) = game_recorder::start_raw_input_listener(app.handle()) {
+                notices.push(format!("游戏录制不可用：{error}"));
+            }
             shortcuts::register_shortcuts(app.handle());
             for notice in notices {
                 state.log(app.handle(), notice);
@@ -81,6 +91,15 @@ pub fn run() {
             commands::delete_profile,
             commands::export_profile,
             commands::import_profile,
+            game_recorder::get_game_recorder_state,
+            game_recorder::start_game_recording,
+            game_recorder::stop_game_activity,
+            game_recorder::start_game_playback,
+            game_recorder::select_game_recording,
+            game_recorder::rename_game_recording,
+            game_recorder::delete_game_recording,
+            game_recorder::update_game_recorder_hotkeys,
+            game_recorder::update_game_playback_settings,
             internal_skill_ai::get_mystery_code_status,
             internal_skill_ai::open_ai_provider_registration,
             internal_skill_ai::save_and_validate_mystery_code,
@@ -95,7 +114,11 @@ pub fn run() {
     app.run(|app, event| match event {
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => desktop::show_main_window(app),
-        RunEvent::Exit => shortcuts::unregister_all(app),
+        RunEvent::Exit => {
+            commands::stop_run_internal(app);
+            game_recorder::stop_game_activity_internal(app);
+            shortcuts::unregister_all(app);
+        }
         _ => {}
     });
 }

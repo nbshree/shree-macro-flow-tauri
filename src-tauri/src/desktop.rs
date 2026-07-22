@@ -4,7 +4,7 @@ use tauri::{
     tray::{TrayIconBuilder, TrayIconEvent},
 };
 
-use crate::{commands, shortcuts, state::AppState};
+use crate::{commands, game_recorder, shortcuts, state::AppState};
 
 const MENU_SHOW: &str = "show-window";
 const MENU_START: &str = "start-run";
@@ -14,7 +14,7 @@ const MENU_QUIT: &str = "quit";
 pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, MENU_SHOW, "显示窗口", true, None::<&str>)?;
     let start = MenuItem::with_id(app, MENU_START, "开始执行", true, None::<&str>)?;
-    let stop = MenuItem::with_id(app, MENU_STOP, "停止执行", true, None::<&str>)?;
+    let stop = MenuItem::with_id(app, MENU_STOP, "停止当前任务", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, MENU_QUIT, "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &start, &stop, &separator, &quit])?;
@@ -30,6 +30,7 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
             }
             MENU_STOP => {
                 commands::stop_run_internal(app);
+                game_recorder::stop_game_activity_internal(app);
             }
             MENU_QUIT => quit_app(app),
             _ => {}
@@ -55,6 +56,8 @@ pub fn show_main_window(app: &AppHandle) {
 }
 
 pub fn quit_app(app: &AppHandle) {
+    commands::stop_run_internal(app);
+    game_recorder::stop_game_activity_internal(app);
     {
         let state = app.state::<AppState>();
         state.lock().is_quitting = true;

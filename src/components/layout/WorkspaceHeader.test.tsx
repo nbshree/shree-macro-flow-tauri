@@ -86,6 +86,15 @@ describe('WorkspaceHeader', () => {
     expect(onWorkspaceChange).toHaveBeenCalledWith('calculator')
   })
 
+  it('switches to the game recorder workspace from the top-level tabs', async () => {
+    const user = userEvent.setup()
+    const { onWorkspaceChange } = renderHeader('longyin')
+
+    await user.click(screen.getByRole('tab', { name: '游戏录制' }))
+
+    expect(onWorkspaceChange).toHaveBeenCalledWith('gameRecorder')
+  })
+
   it('switches to the tower calculator workspace from the top-level tabs', async () => {
     const user = userEvent.setup()
     const { onWorkspaceChange } = renderHeader('longyin')
@@ -103,11 +112,11 @@ describe('WorkspaceHeader', () => {
     macroTab.focus()
     await user.keyboard('{ArrowRight}')
 
-    expect(onWorkspaceChange).toHaveBeenCalledWith('calculator')
-    expect(screen.getByRole('tab', { name: '防守内功' })).toHaveFocus()
+    expect(onWorkspaceChange).toHaveBeenCalledWith('gameRecorder')
+    expect(screen.getByRole('tab', { name: '游戏录制' })).toHaveFocus()
   })
 
-  it('cycles through three workspace tabs with the arrow keys', async () => {
+  it('cycles through four workspace tabs with the arrow keys', async () => {
     const user = userEvent.setup()
     const { onWorkspaceChange } = renderHeader('longyin', vi.fn(), 'towerCalculator')
 
@@ -147,15 +156,17 @@ describe('WorkspaceHeader', () => {
     renderHeader('longyin', vi.fn(), 'towerCalculator')
 
     const tabs = screen.getAllByRole('tab')
-    expect(tabs).toHaveLength(3)
+    expect(tabs).toHaveLength(4)
     expect(tabs.map((tab) => tab.getAttribute('aria-controls'))).toEqual([
       'macro-workspace',
+      'game-recorder-workspace',
       'calculator-workspace',
       'tower-calculator-workspace'
     ])
     expect(screen.getByRole('tab', { name: '拆塔评估' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', { name: '拆塔评估' })).toHaveAttribute('tabindex', '0')
     expect(screen.getByRole('tab', { name: '宏流程' })).toHaveAttribute('tabindex', '-1')
+    expect(screen.getByRole('tab', { name: '游戏录制' })).toHaveAttribute('tabindex', '-1')
     expect(screen.getByRole('tab', { name: '防守内功' })).toHaveAttribute('tabindex', '-1')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('拆塔内功评估')
   })

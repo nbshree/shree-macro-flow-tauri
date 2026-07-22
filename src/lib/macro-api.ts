@@ -103,6 +103,63 @@ export type MacroState = {
   logs: string[]
 }
 
+export type GameRecorderActivity =
+  'idle' | 'recordingCountdown' | 'recording' | 'playbackCountdown' | 'playing'
+
+export type GameRecorderHotkeys = {
+  recordStart: string
+  stop: string
+  playbackStart: string
+}
+
+export type GamePlaybackSettings = {
+  speed: 0.5 | 1 | 1.5 | 2
+  loopMode: 'count' | 'infinite'
+  loopCount: number
+  loopIntervalSeconds: number
+}
+
+export type GameRecordingTarget = {
+  processName: string
+  windowTitle: string
+}
+
+export type GameRecordedEvent =
+  | { atMs: number; type: 'mouseMove'; dx: number; dy: number }
+  | {
+      atMs: number
+      type: 'mouseButton'
+      button: 'left' | 'right' | 'middle'
+      pressed: boolean
+    }
+  | { atMs: number; type: 'mouseWheel'; delta: number }
+  | { atMs: number; type: 'key'; scanCode: number; extended: boolean; pressed: boolean }
+
+export type GameRecordingSummary = {
+  id: string
+  name: string
+  durationMs: number
+  eventCount: number
+  keyboardEventCount: number
+  mouseEventCount: number
+  target: GameRecordingTarget
+  createdAt: number
+  updatedAt: number
+  playback: GamePlaybackSettings
+}
+
+export type GameRecorderState = {
+  recordings: GameRecordingSummary[]
+  activeRecordingId: string | null
+  hotkeys: GameRecorderHotkeys
+  activity: GameRecorderActivity
+  countdownRemaining: number
+  completedLoops: number
+  targetMismatch: boolean
+  hotkeyErrors: string[]
+  lastError: string | null
+}
+
 export type WindowResizeDirection =
   'East' | 'North' | 'NorthEast' | 'NorthWest' | 'South' | 'SouthEast' | 'SouthWest' | 'West'
 
@@ -158,6 +215,19 @@ export type MacroAPI = {
   checkForUpdate: () => Promise<AppUpdateCheckResult>
   installUpdate: (onEvent: (event: AppUpdateDownloadEvent) => void) => Promise<void>
   onState: (callback: (state: MacroState) => void) => () => void
+  getGameRecorderState: () => Promise<GameRecorderState>
+  startGameRecording: () => Promise<GameRecorderState>
+  stopGameActivity: () => Promise<GameRecorderState>
+  startGamePlayback: (allowTargetMismatch?: boolean) => Promise<GameRecorderState>
+  selectGameRecording: (id: string) => Promise<GameRecorderState>
+  renameGameRecording: (id: string, name: string) => Promise<GameRecorderState>
+  deleteGameRecording: (id: string) => Promise<GameRecorderState>
+  updateGameRecorderHotkeys: (hotkeys: GameRecorderHotkeys) => Promise<GameRecorderState>
+  updateGamePlaybackSettings: (
+    id: string,
+    settings: GamePlaybackSettings
+  ) => Promise<GameRecorderState>
+  onGameRecorderState: (callback: (state: GameRecorderState) => void) => () => void
   window: WindowControlsAPI
 }
 
@@ -187,6 +257,24 @@ type StateCommand =
 
 function invokeState(command: StateCommand, args?: Record<string, unknown>): Promise<MacroState> {
   return callTauri(() => invoke<MacroState>(command, args))
+}
+
+type GameRecorderStateCommand =
+  | 'get_game_recorder_state'
+  | 'start_game_recording'
+  | 'stop_game_activity'
+  | 'start_game_playback'
+  | 'select_game_recording'
+  | 'rename_game_recording'
+  | 'delete_game_recording'
+  | 'update_game_recorder_hotkeys'
+  | 'update_game_playback_settings'
+
+function invokeGameRecorderState(
+  command: GameRecorderStateCommand,
+  args?: Record<string, unknown>
+): Promise<GameRecorderState> {
+  return callTauri(() => invoke<GameRecorderState>(command, args))
 }
 
 function callTauri<T>(operation: () => Promise<T>): Promise<T> {
@@ -291,6 +379,41 @@ export const macroApi: MacroAPI = {
       })
       .catch((error: unknown) => {
         if (!disposed) console.error('监听 macro-state 事件失败', error)
+      })
+
+    return () => {
+      disposed = true
+      unlisten?.()
+      unlisten = undefined
+    }
+  },
+  getGameRecorderState: () => invokeGameRecorderState('get_game_recorder_state'),
+  startGameRecording: () => invokeGameRecorderState('start_game_recording'),
+  stopGameActivity: () => invokeGameRecorderState('stop_game_activity'),
+  startGamePlayback: (allowTargetMismatch = false) =>
+    invokeGameRecorderState('start_game_playback', { allowTargetMismatch }),
+  selectGameRecording: (id) => invokeGameRecorderState('select_game_recording', { id }),
+  renameGameRecording: (id, name) => invokeGameRecorderState('rename_game_recording', { id, name }),
+  deleteGameRecording: (id) => invokeGameRecorderState('delete_game_recording', { id }),
+  updateGameRecorderHotkeys: (hotkeys) =>
+    invokeGameRecorderState('update_game_recorder_hotkeys', { hotkeys }),
+  updateGamePlaybackSettings: (id, settings) =>
+    invokeGameRecorderState('update_game_playback_settings', { id, settings }),
+  onGameRecorderState: (callback) => {
+    let disposed = false
+    let unlisten: UnlistenFn | undefined
+
+    void callTauri(() =>
+      listen<GameRecorderState>('game-recorder-state', (event) => {
+        if (!disposed) callback(event.payload)
+      })
+    )
+      .then((nextUnlisten) => {
+        if (disposed) nextUnlisten()
+        else unlisten = nextUnlisten
+      })
+      .catch((error: unknown) => {
+        if (!disposed) console.error('监听 game-recorder-state 事件失败', error)
       })
 
     return () => {

@@ -1,6 +1,7 @@
 import {
   Calculator,
   Castle,
+  Gamepad2,
   LoaderCircle,
   Palette,
   RefreshCw,
@@ -11,7 +12,6 @@ import type { KeyboardEvent, RefObject } from 'react'
 
 import type { MacroController } from '../../hooks/useMacroController'
 import { getThemeDefinition, normalizeAppearance } from '../../themes'
-import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 
 type WorkspaceHeaderProps = {
@@ -26,11 +26,17 @@ type WorkspaceHeaderProps = {
   onCheckForUpdate: () => void
 }
 
-export type WorkspaceView = 'macro' | 'calculator' | 'towerCalculator'
+export type WorkspaceView = 'macro' | 'gameRecorder' | 'calculator' | 'towerCalculator'
 
-const workspaceOrder: readonly WorkspaceView[] = ['macro', 'calculator', 'towerCalculator']
+const workspaceOrder: readonly WorkspaceView[] = [
+  'macro',
+  'gameRecorder',
+  'calculator',
+  'towerCalculator'
+]
 const workspaceTabIds: Record<WorkspaceView, string> = {
   macro: 'workspace-tab-macro',
+  gameRecorder: 'workspace-tab-game-recorder',
   calculator: 'workspace-tab-calculator',
   towerCalculator: 'workspace-tab-tower-calculator'
 }
@@ -39,6 +45,10 @@ const workspaceLabels: Record<WorkspaceView, { title: string; subtitle: string }
   macro: {
     title: '自动点击流程台',
     subtitle: '自动化流程管理'
+  },
+  gameRecorder: {
+    title: '游戏操作录制',
+    subtitle: '相对鼠标与键盘时间轴录制回放'
   },
   calculator: {
     title: '防守内功评估',
@@ -61,7 +71,7 @@ export function WorkspaceHeader({
   onOpenTheme,
   onCheckForUpdate
 }: WorkspaceHeaderProps) {
-  const { state, status } = controller
+  const { state } = controller
   const appearance = normalizeAppearance(state.appearance)
   const theme = getThemeDefinition(appearance.themeId)
   const label = workspaceLabels[activeWorkspace]
@@ -115,6 +125,22 @@ export function WorkspaceHeader({
         </Button>
         <Button
           className="workspace-switcher__tab"
+          data-active={activeWorkspace === 'gameRecorder'}
+          id="workspace-tab-game-recorder"
+          type="button"
+          role="tab"
+          variant="ghost"
+          aria-controls="game-recorder-workspace"
+          aria-selected={activeWorkspace === 'gameRecorder'}
+          tabIndex={activeWorkspace === 'gameRecorder' ? 0 : -1}
+          onKeyDown={handleWorkspaceKeyDown}
+          onClick={() => onWorkspaceChange('gameRecorder')}
+        >
+          <Gamepad2 aria-hidden="true" />
+          <span>游戏录制</span>
+        </Button>
+        <Button
+          className="workspace-switcher__tab"
           data-active={activeWorkspace === 'calculator'}
           id="workspace-tab-calculator"
           type="button"
@@ -148,10 +174,6 @@ export function WorkspaceHeader({
       </div>
 
       <div className="workspace-header__actions">
-        <Badge className="status-pill" data-tone={status.tone} variant="ghost" aria-live="polite">
-          <span aria-hidden="true" />
-          {status.label}
-        </Badge>
         <span className="app-version" aria-label={`当前版本 v${appVersion ?? '未知'}`}>
           v{appVersion ?? '—'}
         </span>

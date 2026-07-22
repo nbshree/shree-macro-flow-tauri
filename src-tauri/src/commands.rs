@@ -7,7 +7,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{
-    input,
+    game_recorder, input,
     model::{
         AppearancePatch, Hotkeys, KeyModifier, LoopMode, MacroProfile, MacroState, Point,
         PointAction, PointPatch, SettingsPatch, clamp_f64, create_id, default_settings,
@@ -52,17 +52,18 @@ pub fn update_appearance(
 
 #[tauri::command]
 pub fn start_recording(app: AppHandle, state: State<'_, AppState>) -> MacroState {
-    let running = {
+    let unavailable = {
         let mut inner = state.lock();
-        if inner.state.is_running {
+        if inner.state.is_running || inner.game_activity {
             true
         } else {
+            inner.is_capturing_key = false;
             inner.state.is_recording = true;
             false
         }
     };
-    if running {
-        state.log(&app, "执行中不能开始录制")
+    if unavailable {
+        state.log(&app, "宏执行或游戏录制任务进行中，不能开始坐标录制")
     } else {
         state.log(&app, "开始录制坐标，按采集热键记录当前鼠标位置")
     }
@@ -143,7 +144,8 @@ pub fn add_key_point(
             &normalized_key,
             &modifiers,
             &inner.state.settings.hotkeys,
-        ) {
+        ) || game_recorder::key_step_conflicts(&app, &normalized_key, &modifiers)
+        {
             Err(format!(
                 "无法添加键盘步骤：{} 与应用全局热键冲突",
                 format_key_step(&normalized_key, &modifiers)
@@ -182,7 +184,13 @@ pub fn add_key_point(
 
 #[tauri::command]
 pub fn set_key_capture(state: State<'_, AppState>, enabled: bool) {
-    state.lock().is_capturing_key = enabled;
+    let mut inner = state.lock();
+    inner.is_capturing_key = can_enable_key_capture(
+        enabled,
+        inner.state.is_running,
+        inner.state.is_recording,
+        inner.game_activity,
+    );
 }
 
 #[tauri::command]
@@ -241,7 +249,8 @@ pub fn update_point(
                     .unwrap_or_else(|| point.modifiers.clone());
                 if action == PointAction::Key
                     && (virtual_key_code(&key).is_none()
-                        || key_step_conflicts_with_hotkey(&key, &modifiers, &hotkeys))
+                        || key_step_conflicts_with_hotkey(&key, &modifiers, &hotkeys)
+                        || game_recorder::key_step_conflicts(&app, &key, &modifiers))
                 {
                     invalid_key = true;
                 } else {
@@ -407,7 +416,10 @@ pub fn update_settings(
         }
     };
 
-    let hotkey_errors = validate_hotkeys(&next_hotkeys);
+    let mut hotkey_errors = validate_hotkeys(&next_hotkeys);
+    hotkey_errors.extend(game_recorder::validate_macro_hotkeys(&app, &next_hotkeys));
+    hotkey_errors.sort();
+    hotkey_errors.dedup();
     if !hotkey_errors.is_empty() {
         state.lock().state.hotkey_errors = hotkey_errors;
         return state.log(&app, "配置未保存：热键存在冲突");
@@ -415,6 +427,9 @@ pub fn update_settings(
 
     {
         let mut inner = state.lock();
+        if !can_edit_flow(&inner) {
+            return inner.state.clone();
+        }
         let current = &mut inner.state.settings;
         if let Some(value) = settings.click_interval_seconds {
             current.click_interval_seconds =
@@ -451,7 +466,14 @@ pub fn create_profile(app: AppHandle, state: State<'_, AppState>, name: String) 
 
     let (profile_name, store_snapshot, path) = {
         let mut inner = state.lock();
+        if !can_edit_flow(&inner) {
+            return inner.state.clone();
+        }
         let now = now_millis();
+        let mut settings = default_settings();
+        // Keep the current, already validated macro hotkeys. Reusing the built-in defaults here
+        // could introduce a conflict with globally configured game-recorder hotkeys.
+        settings.hotkeys = inner.state.settings.hotkeys.clone();
         let profile = MacroProfile {
             id: create_id(),
             name: sanitize_profile_name(
@@ -459,7 +481,7 @@ pub fn create_profile(app: AppHandle, state: State<'_, AppState>, name: String) 
                 &format!("方案 {}", inner.store.profiles.len() + 1),
             ),
             points: Vec::new(),
-            settings: default_settings(),
+            settings,
             created_at: now,
             updated_at: now,
         };
@@ -491,10 +513,29 @@ pub fn switch_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
     if !should_switch {
         return state.snapshot();
     }
+    let target_profile = {
+        let inner = state.lock();
+        inner
+            .store
+            .profiles
+            .iter()
+            .find(|profile| profile.id == id)
+            .cloned()
+    };
+    if let Some(profile) = target_profile {
+        let errors = game_recorder::validate_profile(&app, &profile);
+        if !errors.is_empty() {
+            state.replace_hotkey_errors(&app, errors);
+            return state.log(&app, "无法切换方案：该方案与游戏录制热键冲突");
+        }
+    }
     state.save_active_profile(&app);
 
     let (name, store_snapshot, path) = {
         let mut inner = state.lock();
+        if !can_edit_flow(&inner) {
+            return inner.state.clone();
+        }
         inner.store.active_profile_id = id;
         apply_active_profile(&mut inner);
         let name = inner
@@ -548,6 +589,37 @@ pub fn rename_profile(
 
 #[tauri::command]
 pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) -> MacroState {
+    let fallback_profile = {
+        let inner = state.lock();
+        if !can_edit_flow(&inner) {
+            return inner.state.clone();
+        }
+        if inner.store.profiles.len() <= 1 {
+            drop(inner);
+            return state.log(&app, "至少需要保留一个方案");
+        }
+        if !inner.store.profiles.iter().any(|profile| profile.id == id) {
+            return inner.state.clone();
+        }
+        (inner.store.active_profile_id == id)
+            .then(|| {
+                inner
+                    .store
+                    .profiles
+                    .iter()
+                    .find(|profile| profile.id != id)
+                    .cloned()
+            })
+            .flatten()
+    };
+    if let Some(profile) = &fallback_profile {
+        let errors = game_recorder::validate_profile(&app, profile);
+        if !errors.is_empty() {
+            state.replace_hotkey_errors(&app, errors);
+            return state.log(&app, "无法删除当前方案：删除后切入的方案与游戏录制热键冲突");
+        }
+    }
+
     let result = {
         let mut inner = state.lock();
         if !can_edit_flow(&inner) {
@@ -557,6 +629,9 @@ pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
             drop(inner);
             return state.log(&app, "至少需要保留一个方案");
         }
+        if !inner.store.profiles.iter().any(|profile| profile.id == id) {
+            return inner.state.clone();
+        }
         let deleted_name = inner
             .store
             .profiles
@@ -564,9 +639,24 @@ pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
             .find(|profile| profile.id == id)
             .map(|profile| profile.name.clone())
             .unwrap_or_else(|| id.clone());
+        let next_active_id = if inner.store.active_profile_id == id {
+            let Some(fallback_id) = fallback_profile.as_ref().and_then(|profile| {
+                inner
+                    .store
+                    .profiles
+                    .iter()
+                    .find(|candidate| candidate.id == profile.id && candidate.id != id)
+                    .map(|candidate| candidate.id.clone())
+            }) else {
+                return inner.state.clone();
+            };
+            Some(fallback_id)
+        } else {
+            None
+        };
         inner.store.profiles.retain(|profile| profile.id != id);
-        if inner.store.active_profile_id == id {
-            inner.store.active_profile_id = inner.store.profiles[0].id.clone();
+        if let Some(fallback_id) = next_active_id {
+            inner.store.active_profile_id = fallback_id;
         }
         apply_active_profile(&mut inner);
         (
@@ -669,10 +759,18 @@ pub async fn import_profile(app: AppHandle) -> MacroState {
     for point in &mut imported.points {
         point.id = create_id();
     }
+    let hotkey_errors = game_recorder::validate_profile(&app, &imported);
+    if !hotkey_errors.is_empty() {
+        state.replace_hotkey_errors(&app, hotkey_errors);
+        return state.log(&app, "导入失败：方案与游戏录制热键冲突");
+    }
     let imported_name = imported.name.clone();
 
     let (store_snapshot, path) = {
         let mut inner = state.lock();
+        if !can_edit_flow(&inner) {
+            return inner.state.clone();
+        }
         inner.store.active_profile_id = imported.id.clone();
         inner.store.profiles.push(imported);
         apply_active_profile(&mut inner);
@@ -727,12 +825,14 @@ pub(crate) fn start_run_internal(app: &AppHandle) -> MacroState {
         if let Err(message) = validate_run_start(
             inner.state.is_recording,
             inner.state.is_running,
+            inner.game_activity,
             &inner.state.points,
         ) {
             Err(message)
         } else {
             inner.state.is_recording = false;
             inner.state.is_running = true;
+            inner.is_capturing_key = false;
             inner.state.current_index = -1;
             inner.state.completed_loops = 0;
             inner.state.countdown_remaining = 0;
@@ -976,10 +1076,13 @@ fn can_change_point_action(current: PointAction, next: PointAction) -> bool {
 fn validate_run_start(
     is_recording: bool,
     is_running: bool,
+    game_activity: bool,
     points: &[Point],
 ) -> Result<(), &'static str> {
     if is_recording {
         Err("录制中不能开始执行")
+    } else if game_activity {
+        Err("游戏录制或回放中不能开始执行宏")
     } else if points.is_empty() {
         Err("无法开始：流程步骤为空")
     } else if !points.iter().any(|point| point.enabled) {
@@ -989,6 +1092,15 @@ fn validate_run_start(
     } else {
         Ok(())
     }
+}
+
+fn can_enable_key_capture(
+    requested: bool,
+    is_running: bool,
+    is_recording: bool,
+    game_activity: bool,
+) -> bool {
+    requested && !is_running && !is_recording && !game_activity
 }
 
 fn enabled_point_indices(points: &[Point]) -> Vec<usize> {
@@ -1113,12 +1225,25 @@ mod tests {
             point.enabled = false;
         }
         assert_eq!(
-            validate_run_start(false, false, &points),
+            validate_run_start(false, false, false, &points),
             Err("无法开始：全部流程步骤已禁用")
         );
 
         points[1].enabled = true;
-        assert_eq!(validate_run_start(false, false, &points), Ok(()));
+        assert_eq!(validate_run_start(false, false, false, &points), Ok(()));
+        assert_eq!(
+            validate_run_start(false, false, true, &points),
+            Err("游戏录制或回放中不能开始执行宏")
+        );
         assert_eq!(enabled_point_indices(&points), vec![1]);
+    }
+
+    #[test]
+    fn key_capture_cannot_be_enabled_during_any_automation_activity() {
+        assert!(can_enable_key_capture(true, false, false, false));
+        assert!(!can_enable_key_capture(false, false, false, false));
+        assert!(!can_enable_key_capture(true, true, false, false));
+        assert!(!can_enable_key_capture(true, false, true, false));
+        assert!(!can_enable_key_capture(true, false, false, true));
     }
 }

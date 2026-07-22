@@ -17,6 +17,7 @@ pub struct RuntimeData {
     pub state: MacroState,
     pub store: PersistedData,
     pub run_token: u64,
+    pub game_activity: bool,
     pub is_capturing_key: bool,
     pub is_quitting: bool,
     pub profile_file: PathBuf,
@@ -34,6 +35,7 @@ impl AppState {
                 state,
                 store: profile_store,
                 run_token: 0,
+                game_activity: false,
                 is_capturing_key: false,
                 is_quitting: false,
                 profile_file,
@@ -109,7 +111,7 @@ pub fn push_log(state: &mut MacroState, message: String) {
 }
 
 pub fn can_edit_flow(inner: &RuntimeData) -> bool {
-    !inner.state.is_running && !inner.state.is_recording
+    !inner.state.is_running && !inner.state.is_recording && !inner.game_activity
 }
 
 pub fn sync_active_profile(inner: &mut RuntimeData) {
@@ -167,6 +169,7 @@ mod tests {
             state,
             store,
             run_token: 42,
+            game_activity: false,
             is_capturing_key: true,
             is_quitting: false,
             profile_file: PathBuf::from("unused.json"),
@@ -188,6 +191,7 @@ mod tests {
         assert!(runtime.state.is_recording);
         assert_eq!(runtime.state.logs, ["existing log"]);
         assert_eq!(runtime.run_token, 42);
+        assert!(!runtime.game_activity);
         assert!(runtime.is_capturing_key);
     }
 }

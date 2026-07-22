@@ -1,4 +1,7 @@
 use crate::model::{KeyModifier, virtual_key_code};
+use crate::raw_input::RawMouseButton;
+
+pub(crate) const GAME_INPUT_EXTRA_INFO: usize = 0x534d_4652;
 
 #[cfg(target_os = "windows")]
 mod platform {
@@ -11,13 +14,15 @@ mod platform {
             Input::KeyboardAndMouse::{
                 INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY,
                 KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MAPVK_VK_TO_VSC_EX, MOUSEEVENTF_LEFTDOWN,
-                MOUSEEVENTF_LEFTUP, MOUSEINPUT, MapVirtualKeyW, SendInput,
+                MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE,
+                MOUSEEVENTF_MOVE_NOCOALESCE, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
+                MOUSEEVENTF_WHEEL, MOUSEINPUT, MapVirtualKeyW, SendInput,
             },
             WindowsAndMessaging::{GetCursorPos, SetCursorPos},
         },
     };
 
-    use super::{KeyModifier, virtual_key_code};
+    use super::{GAME_INPUT_EXTRA_INFO, KeyModifier, RawMouseButton, virtual_key_code};
 
     pub fn enable_per_monitor_dpi_awareness() {
         // Tauri normally configures this through its Windows manifest. Calling it here also keeps
@@ -72,6 +77,128 @@ mod platform {
             Err(error)
         } else {
             Ok(())
+        }
+    }
+
+    pub fn game_key(scan_code: u16, extended: bool, pressed: bool) -> Result<(), String> {
+        if scan_code == 0 {
+            return Err("无法回放无效的键盘扫描码".into());
+        }
+        let mut flags = KEYEVENTF_SCANCODE;
+        if extended {
+            flags |= KEYEVENTF_EXTENDEDKEY;
+        }
+        if !pressed {
+            flags |= KEYEVENTF_KEYUP;
+        }
+        send_inputs(&[INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: 0,
+                    wScan: scan_code,
+                    dwFlags: flags,
+                    dwExtraInfo: GAME_INPUT_EXTRA_INFO,
+                    ..Default::default()
+                },
+            },
+        }])
+    }
+
+    pub fn game_mouse_move(dx: i32, dy: i32) -> Result<(), String> {
+        if dx == 0 && dy == 0 {
+            return Ok(());
+        }
+        send_inputs(&[game_mouse_input(
+            dx,
+            dy,
+            0,
+            MOUSEEVENTF_MOVE | MOUSEEVENTF_MOVE_NOCOALESCE,
+        )])
+    }
+
+    pub fn game_mouse_button(button: RawMouseButton, pressed: bool) -> Result<(), String> {
+        let flags = match (button, pressed) {
+            (RawMouseButton::Left, true) => MOUSEEVENTF_LEFTDOWN,
+            (RawMouseButton::Left, false) => MOUSEEVENTF_LEFTUP,
+            (RawMouseButton::Right, true) => MOUSEEVENTF_RIGHTDOWN,
+            (RawMouseButton::Right, false) => MOUSEEVENTF_RIGHTUP,
+            (RawMouseButton::Middle, true) => MOUSEEVENTF_MIDDLEDOWN,
+            (RawMouseButton::Middle, false) => MOUSEEVENTF_MIDDLEUP,
+        };
+        send_inputs(&[game_mouse_input(0, 0, 0, flags)])
+    }
+
+    pub fn game_mouse_wheel(delta: i16) -> Result<(), String> {
+        send_inputs(&[game_mouse_input(
+            0,
+            0,
+            delta as i32 as u32,
+            MOUSEEVENTF_WHEEL,
+        )])
+    }
+
+    pub fn release_game_inputs(keys: &[(u16, bool)], buttons: &[RawMouseButton]) -> bool {
+        let mut inputs = Vec::with_capacity(keys.len() + buttons.len());
+        for (scan_code, extended) in keys.iter().rev() {
+            let mut flags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+            if *extended {
+                flags |= KEYEVENTF_EXTENDEDKEY;
+            }
+            inputs.push(INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: 0,
+                        wScan: *scan_code,
+                        dwFlags: flags,
+                        dwExtraInfo: GAME_INPUT_EXTRA_INFO,
+                        ..Default::default()
+                    },
+                },
+            });
+        }
+        for button in buttons.iter().rev() {
+            let flags = match button {
+                RawMouseButton::Left => MOUSEEVENTF_LEFTUP,
+                RawMouseButton::Right => MOUSEEVENTF_RIGHTUP,
+                RawMouseButton::Middle => MOUSEEVENTF_MIDDLEUP,
+            };
+            inputs.push(game_mouse_input(0, 0, 0, flags));
+        }
+        release_each_with_retries(&inputs, |input| unsafe {
+            SendInput(1, input, size_of::<INPUT>() as i32) == 1
+        })
+    }
+
+    fn release_each_with_retries<T>(items: &[T], mut send: impl FnMut(&T) -> bool) -> bool {
+        let mut all_released = true;
+        for item in items {
+            let mut released = false;
+            for _ in 0..3 {
+                if send(item) {
+                    released = true;
+                    break;
+                }
+            }
+            all_released &= released;
+        }
+        all_released
+    }
+
+    fn game_mouse_input(dx: i32, dy: i32, mouse_data: u32, flags: u32) -> INPUT {
+        INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx,
+                    dy,
+                    mouseData: mouse_data,
+                    dwFlags: flags,
+                    dwExtraInfo: GAME_INPUT_EXTRA_INFO,
+                    ..Default::default()
+                },
+            },
         }
     }
 
@@ -398,12 +525,23 @@ mod platform {
             assert_eq!(result, Err("partial SendInput".into()));
             assert_eq!(*releases.borrow(), vec![vec![MOUSEEVENTF_LEFTUP]]);
         }
+
+        #[test]
+        fn release_retries_each_item_and_continues_after_a_failure() {
+            let attempts = RefCell::new(Vec::new());
+            let released = release_each_with_retries(&[1, 2], |item| {
+                attempts.borrow_mut().push(*item);
+                *item == 2
+            });
+            assert!(!released);
+            assert_eq!(*attempts.borrow(), vec![1, 1, 1, 2]);
+        }
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 mod platform {
-    use super::KeyModifier;
+    use super::{KeyModifier, RawMouseButton};
 
     pub fn enable_per_monitor_dpi_awareness() {}
 
@@ -422,8 +560,29 @@ mod platform {
     pub fn key(_key: &str, _modifiers: &[KeyModifier]) -> Result<(), String> {
         Err("当前平台暂不支持模拟键盘输入".into())
     }
+
+    pub fn game_key(_scan_code: u16, _extended: bool, _pressed: bool) -> Result<(), String> {
+        Err("游戏操作回放仅支持 Windows".into())
+    }
+
+    pub fn game_mouse_move(_dx: i32, _dy: i32) -> Result<(), String> {
+        Err("游戏操作回放仅支持 Windows".into())
+    }
+
+    pub fn game_mouse_button(_button: RawMouseButton, _pressed: bool) -> Result<(), String> {
+        Err("游戏操作回放仅支持 Windows".into())
+    }
+
+    pub fn game_mouse_wheel(_delta: i16) -> Result<(), String> {
+        Err("游戏操作回放仅支持 Windows".into())
+    }
+
+    pub fn release_game_inputs(keys: &[(u16, bool)], buttons: &[RawMouseButton]) -> bool {
+        keys.is_empty() && buttons.is_empty()
+    }
 }
 
 pub use platform::{
-    click, double_click, enable_per_monitor_dpi_awareness, get_cursor_position, key,
+    click, double_click, enable_per_monitor_dpi_awareness, game_key, game_mouse_button,
+    game_mouse_move, game_mouse_wheel, get_cursor_position, key, release_game_inputs,
 };

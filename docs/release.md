@@ -164,8 +164,9 @@ try {
    cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
    ```
 
-涉及宏输入、DPI、托盘或持久化的改动，还应执行 `AGENTS.md` 中列出的 Windows 手工验证。
-涉及 updater 时，还要手工检查应用正在录制或执行宏时不能开始安装。
+涉及宏输入、游戏操作录制、DPI、托盘或持久化的改动，还应执行 `AGENTS.md` 中列出的
+Windows 手工验证。涉及 updater 时，还要手工检查宏录制/执行以及游戏录制/回放期间均不能
+开始安装。
 
 ## 自动发版步骤
 

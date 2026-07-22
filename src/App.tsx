@@ -10,26 +10,37 @@ import { SettingsPanel } from './components/panels/SettingsPanel'
 import { ThemeBackground, ThemeDialog } from './components/theme'
 import { UpdateDialog } from './components/update/UpdateDialog'
 import { TooltipProvider } from './components/ui/tooltip'
+import { GameRecorderPage } from './features/game-recorder'
 import { InternalSkillCalculatorPage } from './features/internal-skill-calculator'
 import { TowerDemolitionCalculatorPage } from './features/tower-demolition-calculator'
-import { useMacroController } from './hooks/useMacroController'
 import { useAppUpdater } from './hooks/useAppUpdater'
+import { useGameRecorderController } from './hooks/useGameRecorderController'
+import { useMacroController } from './hooks/useMacroController'
+import { getInstallBlockedReason } from './lib/install-blocking'
 import { ThemeProvider } from './themes'
 
 function App(): React.JSX.Element {
   const controller = useMacroController()
+  const gameRecorderController = useGameRecorderController(
+    controller.state.isRunning || controller.state.isRecording
+  )
+  const gameActivityBusy = gameRecorderController.state.activity !== 'idle'
+  const macroUiController = gameActivityBusy ? { ...controller, isEditingLocked: true } : controller
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceView>('macro')
   const [themeDialogOpen, setThemeDialogOpen] = useState(false)
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const themeTriggerRef = useRef<HTMLButtonElement>(null)
   const updateTriggerRef = useRef<HTMLButtonElement>(null)
-  const installBlockedReason = controller.state.isRunning
-    ? '宏正在执行，请先停止执行再安装更新。'
-    : controller.state.isRecording
-      ? '正在录制流程，请先停止录制再安装更新。'
-      : controller.hasUnsavedChanges
-        ? '当前有未保存的编辑，请先保存或撤销后再安装更新。'
-        : null
+  const installBlockedReason = getInstallBlockedReason({
+    macroIsRunning: controller.state.isRunning,
+    macroIsRecording: controller.state.isRecording,
+    gameActivity: gameRecorderController.state.activity,
+    gameHasUnsavedChanges:
+      gameRecorderController.hasHotkeyChanges ||
+      gameRecorderController.hasPlaybackChanges ||
+      gameRecorderController.hasNameChanges,
+    macroHasUnsavedChanges: controller.hasUnsavedChanges
+  })
   const updater = useAppUpdater({ installBlockedReason })
 
   useEffect(() => {
@@ -48,6 +59,14 @@ function App(): React.JSX.Element {
       disposed = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!gameActivityBusy) return
+    controller.stopHotkeyCapture()
+    controller.closeKeyStepEditor()
+    controller.setCapturingPointKeyId(null)
+    void window.api.setKeyCapture(false)
+  }, [gameActivityBusy])
 
   return (
     <ThemeProvider appearance={controller.state.appearance}>
@@ -79,15 +98,24 @@ function App(): React.JSX.Element {
               >
                 <section className="workspace-grid">
                   <aside className="sidebar" aria-label="宏控制与配置">
-                    <ControlPanel controller={controller} />
-                    <ProfilePanel controller={controller} />
-                    <SettingsPanel controller={controller} />
+                    <ControlPanel controller={macroUiController} />
+                    <ProfilePanel controller={macroUiController} />
+                    <SettingsPanel controller={macroUiController} />
                   </aside>
                   <section className="main-workspace" aria-label="宏流程与执行日志">
-                    <FlowPanel controller={controller} />
+                    <FlowPanel controller={macroUiController} />
                     <LogPanel controller={controller} />
                   </section>
                 </section>
+              </section>
+              <section
+                className="workspace-view"
+                id="game-recorder-workspace"
+                role="tabpanel"
+                aria-labelledby="workspace-tab-game-recorder"
+                hidden={activeWorkspace !== 'gameRecorder'}
+              >
+                <GameRecorderPage controller={gameRecorderController} />
               </section>
               <section
                 className="workspace-view"
