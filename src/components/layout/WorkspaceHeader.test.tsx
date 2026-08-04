@@ -96,6 +96,7 @@ describe('WorkspaceHeader', () => {
 
     expect(screen.getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual([
       '宏流程',
+      '视觉流程',
       'Buff 助手',
       '交易行助手',
       '游戏录制',
@@ -137,7 +138,7 @@ describe('WorkspaceHeader', () => {
     await user.keyboard('{Enter}')
     await user.keyboard('{ArrowDown}{Enter}')
 
-    expect(onWorkspaceChange).toHaveBeenCalledWith('buffAssistant')
+    expect(onWorkspaceChange).toHaveBeenCalledWith('visualWorkflow')
     expect(trigger).toHaveFocus()
   })
 

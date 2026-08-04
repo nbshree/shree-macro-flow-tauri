@@ -12,6 +12,8 @@ type InstallBlockingState = {
   buffIsMonitoring: boolean
   tradeActivity: TradeAssistantActivity
   tradeIsRunning: boolean
+  visualWorkflowIsRunning: boolean
+  visualWorkflowHasUnsavedChanges: boolean
   gameHasUnsavedChanges: boolean
   macroHasUnsavedChanges: boolean
 }
@@ -24,6 +26,8 @@ export function getInstallBlockedReason({
   buffIsMonitoring,
   tradeActivity,
   tradeIsRunning,
+  visualWorkflowIsRunning,
+  visualWorkflowHasUnsavedChanges,
   gameHasUnsavedChanges,
   macroHasUnsavedChanges
 }: InstallBlockingState): string | null {
@@ -41,9 +45,15 @@ export function getInstallBlockedReason({
   if (tradeIsRunning || tradeActivity === 'testing') {
     return '交易行助手正在截图或执行点击，请先停止抢购或测试再安装更新。'
   }
+  if (visualWorkflowIsRunning) {
+    return '视觉流程正在执行，请先停止流程再安装更新。'
+  }
   if (gameHasUnsavedChanges) {
     return '游戏录制有未保存的配置，请先保存或撤销后再安装更新。'
   }
   if (macroHasUnsavedChanges) return '当前有未保存的编辑，请先保存或撤销后再安装更新。'
+  if (visualWorkflowHasUnsavedChanges) {
+    return '视觉流程有未保存的编辑，请先保存或撤销后再安装更新。'
+  }
   return null
 }

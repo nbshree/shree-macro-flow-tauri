@@ -24,6 +24,10 @@ mod platform {
 
     use super::{GAME_INPUT_EXTRA_INFO, KeyModifier, RawMouseButton, virtual_key_code};
 
+    pub struct HeldKeyChord {
+        codes: Vec<u16>,
+    }
+
     pub fn enable_per_monitor_dpi_awareness() {
         // Tauri normally configures this through its Windows manifest. Calling it here also keeps
         // cursor coordinates physical if the executable is launched without that manifest in dev.
@@ -44,14 +48,28 @@ mod platform {
     }
 
     pub fn click(x: i32, y: i32) -> Result<(), String> {
-        mouse_click(x, y, 1)
+        click_button(x, y, RawMouseButton::Left, 1)
     }
 
     pub fn double_click(x: i32, y: i32) -> Result<(), String> {
-        mouse_click(x, y, 2)
+        click_button(x, y, RawMouseButton::Left, 2)
+    }
+
+    pub fn click_button(
+        x: i32,
+        y: i32,
+        button: RawMouseButton,
+        click_count: usize,
+    ) -> Result<(), String> {
+        mouse_click(x, y, button, click_count.max(1))
     }
 
     pub fn key(key: &str, modifiers: &[KeyModifier]) -> Result<(), String> {
+        let held = key_down(key, modifiers)?;
+        key_up(held)
+    }
+
+    pub fn key_down(key: &str, modifiers: &[KeyModifier]) -> Result<HeldKeyChord, String> {
         let key_code = virtual_key_code(key).ok_or_else(|| format!("不支持的按键：{key}"))?;
         let modifier_codes = modifiers
             .iter()
@@ -64,7 +82,10 @@ mod platform {
         let mut codes = modifier_codes;
         codes.push(key_code);
 
-        let inputs = keyboard_inputs(&codes, map_virtual_key_to_scan_code);
+        let inputs = codes
+            .iter()
+            .map(|code| keyboard_input(*code, false))
+            .collect::<Vec<_>>();
         if let Err(error) = send_inputs(&inputs) {
             // SendInput may have accepted only a prefix (for example, modifiers but not the main
             // key). Best-effort releases avoid leaving Ctrl/Alt/Shift logically held down.
@@ -73,6 +94,21 @@ mod platform {
                 .rev()
                 .map(|code| keyboard_input(*code, true))
                 .collect::<Vec<_>>();
+            send_inputs_best_effort(&releases);
+            Err(error)
+        } else {
+            Ok(HeldKeyChord { codes })
+        }
+    }
+
+    pub fn key_up(held: HeldKeyChord) -> Result<(), String> {
+        let releases = held
+            .codes
+            .iter()
+            .rev()
+            .map(|code| keyboard_input(*code, true))
+            .collect::<Vec<_>>();
+        if let Err(error) = send_inputs(&releases) {
             send_inputs_best_effort(&releases);
             Err(error)
         } else {
@@ -214,10 +250,16 @@ mod platform {
         }
     }
 
-    fn mouse_click(x: i32, y: i32, click_count: usize) -> Result<(), String> {
+    fn mouse_click(
+        x: i32,
+        y: i32,
+        button: RawMouseButton,
+        click_count: usize,
+    ) -> Result<(), String> {
         perform_mouse_click(
             x,
             y,
+            button,
             click_count,
             set_cursor_position,
             send_inputs,
@@ -228,6 +270,7 @@ mod platform {
     fn perform_mouse_click<SetCursor, Send, Release>(
         x: i32,
         y: i32,
+        button: RawMouseButton,
         click_count: usize,
         set_cursor: SetCursor,
         send: Send,
@@ -239,22 +282,31 @@ mod platform {
         Release: FnOnce(&[INPUT]),
     {
         set_cursor(x, y)?;
-        let inputs = mouse_click_inputs(click_count);
+        let (down, up) = mouse_button_flags(button);
+        let inputs = mouse_click_inputs(down, up, click_count);
         if let Err(error) = send(&inputs) {
-            // A partial SendInput may stop after LEFTDOWN. A best-effort release avoids leaving
-            // the primary mouse button logically held down.
-            release(&[mouse_input(MOUSEEVENTF_LEFTUP)]);
+            // A partial SendInput may stop after the button-down event. A best-effort release
+            // avoids leaving that mouse button logically held down.
+            release(&[mouse_input(up)]);
             Err(error)
         } else {
             Ok(())
         }
     }
 
-    fn mouse_click_inputs(click_count: usize) -> Vec<INPUT> {
+    fn mouse_button_flags(button: RawMouseButton) -> (u32, u32) {
+        match button {
+            RawMouseButton::Left => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
+            RawMouseButton::Right => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+            RawMouseButton::Middle => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+        }
+    }
+
+    fn mouse_click_inputs(down: u32, up: u32, click_count: usize) -> Vec<INPUT> {
         let mut inputs = Vec::with_capacity(click_count * 2);
         for _ in 0..click_count {
-            inputs.push(mouse_input(MOUSEEVENTF_LEFTDOWN));
-            inputs.push(mouse_input(MOUSEEVENTF_LEFTUP));
+            inputs.push(mouse_input(down));
+            inputs.push(mouse_input(up));
         }
         inputs
     }
@@ -267,6 +319,7 @@ mod platform {
         }
     }
 
+    #[cfg(test)]
     fn keyboard_inputs<MapScan>(codes: &[u16], map_scan: MapScan) -> Vec<INPUT>
     where
         MapScan: Fn(u16) -> u32,
@@ -458,6 +511,7 @@ mod platform {
             perform_mouse_click(
                 -120,
                 45,
+                RawMouseButton::Left,
                 1,
                 |x, y| {
                     positions.borrow_mut().push((x, y));
@@ -485,6 +539,7 @@ mod platform {
             perform_mouse_click(
                 -800,
                 -200,
+                RawMouseButton::Left,
                 2,
                 |x, y| {
                     positions.borrow_mut().push((x, y));
@@ -516,6 +571,7 @@ mod platform {
             let result = perform_mouse_click(
                 10,
                 20,
+                RawMouseButton::Left,
                 2,
                 |_, _| Ok(()),
                 |_| Err("partial SendInput".into()),
@@ -524,6 +580,41 @@ mod platform {
 
             assert_eq!(result, Err("partial SendInput".into()));
             assert_eq!(*releases.borrow(), vec![vec![MOUSEEVENTF_LEFTUP]]);
+        }
+
+        #[test]
+        fn positioned_click_supports_each_mouse_button() {
+            let cases = [
+                (
+                    RawMouseButton::Left,
+                    vec![MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP],
+                ),
+                (
+                    RawMouseButton::Right,
+                    vec![MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP],
+                ),
+                (
+                    RawMouseButton::Middle,
+                    vec![MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP],
+                ),
+            ];
+            for (button, expected) in cases {
+                let sent = RefCell::new(Vec::new());
+                perform_mouse_click(
+                    1,
+                    2,
+                    button,
+                    1,
+                    |_, _| Ok(()),
+                    |inputs| {
+                        sent.borrow_mut().extend(mouse_flags(inputs));
+                        Ok(())
+                    },
+                    |_| {},
+                )
+                .expect("button click succeeds");
+                assert_eq!(*sent.borrow(), expected);
+            }
         }
 
         #[test]
@@ -543,6 +634,8 @@ mod platform {
 mod platform {
     use super::{KeyModifier, RawMouseButton};
 
+    pub struct HeldKeyChord;
+
     pub fn enable_per_monitor_dpi_awareness() {}
 
     pub fn get_cursor_position() -> Result<(i32, i32), String> {
@@ -557,7 +650,24 @@ mod platform {
         Err("当前平台暂不支持模拟鼠标双击".into())
     }
 
+    pub fn click_button(
+        _x: i32,
+        _y: i32,
+        _button: RawMouseButton,
+        _click_count: usize,
+    ) -> Result<(), String> {
+        Err("当前平台暂不支持模拟鼠标点击".into())
+    }
+
     pub fn key(_key: &str, _modifiers: &[KeyModifier]) -> Result<(), String> {
+        Err("当前平台暂不支持模拟键盘输入".into())
+    }
+
+    pub fn key_down(_key: &str, _modifiers: &[KeyModifier]) -> Result<HeldKeyChord, String> {
+        Err("当前平台暂不支持模拟键盘输入".into())
+    }
+
+    pub fn key_up(_held: HeldKeyChord) -> Result<(), String> {
         Err("当前平台暂不支持模拟键盘输入".into())
     }
 
@@ -583,6 +693,7 @@ mod platform {
 }
 
 pub use platform::{
-    click, double_click, enable_per_monitor_dpi_awareness, game_key, game_mouse_button,
-    game_mouse_move, game_mouse_wheel, get_cursor_position, key, release_game_inputs,
+    click, click_button, double_click, enable_per_monitor_dpi_awareness, game_key,
+    game_mouse_button, game_mouse_move, game_mouse_wheel, get_cursor_position, key, key_down,
+    key_up, release_game_inputs,
 };

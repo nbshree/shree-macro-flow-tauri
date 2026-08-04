@@ -8,6 +8,7 @@ import {
   type GameRecorderController
 } from '@/hooks/useGameRecorderController'
 import { emptyState, type MacroController } from '@/hooks/useMacroController'
+import { emptyVisualWorkflowState } from '@/hooks/useVisualWorkflowController'
 import type {
   BuffAssistantState,
   GameRecorderState,
@@ -375,6 +376,34 @@ export function createMacroApi(
     onTradeAssistantState: vi.fn(() => () => undefined),
     onTradeMetric: vi.fn(() => () => undefined),
     onTradeExecutionLog: vi.fn(() => () => undefined),
+    getVisualWorkflowState: vi.fn(async () => emptyVisualWorkflowState),
+    listVisualWorkflowCaptureWindows: vi.fn(async () => []),
+    captureVisualWorkflowPreview: vi.fn(async () => {
+      throw new Error('not configured')
+    }),
+    saveVisualWorkflow: vi.fn(async (definition) => ({
+      ...emptyVisualWorkflowState,
+      definition
+    })),
+    validateVisualWorkflow: vi.fn(async () => []),
+    startVisualWorkflow: vi.fn(async (definition) => ({
+      ...emptyVisualWorkflowState,
+      definition,
+      activity: 'running' as const,
+      isRunning: true
+    })),
+    stopVisualWorkflow: vi.fn(async () => emptyVisualWorkflowState),
+    saveVisualWorkflowDetectorTemplate: vi.fn(async (definition) => ({
+      ...emptyVisualWorkflowState,
+      definition
+    })),
+    deleteVisualWorkflowDetectorTemplate: vi.fn(async (definition) => ({
+      ...emptyVisualWorkflowState,
+      definition
+    })),
+    onVisualWorkflowState: vi.fn(() => () => undefined),
+    onVisualWorkflowProgress: vi.fn(() => () => undefined),
+    onVisualWorkflowExecutionLog: vi.fn(() => () => undefined),
     window: {
       minimize: vi.fn(async () => undefined),
       toggleMaximize: vi.fn(async () => undefined),

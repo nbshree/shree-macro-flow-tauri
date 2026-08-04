@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
+    automation_activity::{AutomationLease, AutomationModule},
     input,
     model::{
         EMERGENCY_STOP_HOTKEY, LoopMode, create_id, normalize_hotkey, now_millis, truncate_chars,
@@ -363,6 +364,7 @@ pub struct GameRecorderRuntime {
     playback_keys: HashSet<(u16, bool)>,
     playback_buttons: HashSet<RawMouseButton>,
     pending_release: bool,
+    activity_lease: Option<AutomationLease>,
 }
 
 pub struct GameRecorder {
@@ -371,11 +373,12 @@ pub struct GameRecorder {
 
 struct TemporaryActivityClaim {
     app: AppHandle,
+    lease: AutomationLease,
 }
 
 impl Drop for TemporaryActivityClaim {
     fn drop(&mut self) {
-        release_activity(&self.app);
+        release_activity(&self.app, Some(self.lease));
     }
 }
 
@@ -397,6 +400,7 @@ impl GameRecorder {
                     playback_keys: HashSet::new(),
                     playback_buttons: HashSet::new(),
                     pending_release: false,
+                    activity_lease: None,
                 }),
             },
             notices,
@@ -710,11 +714,14 @@ pub fn update_game_playback_settings(
 
 pub(crate) fn start_game_recording_internal(app: &AppHandle) -> Result<GameRecorderState, String> {
     retry_pending_release_before_start(app)?;
-    if let Err(error) = claim_activity(app) {
-        set_last_error(app, error.clone());
-        app.state::<AppState>().log(app, &error);
-        return Err(error);
-    }
+    let activity_lease = match claim_activity(app) {
+        Ok(lease) => lease,
+        Err(error) => {
+            set_last_error(app, error.clone());
+            app.state::<AppState>().log(app, &error);
+            return Err(error);
+        }
+    };
     let state = app.state::<GameRecorder>();
     let result = {
         let mut inner = state.lock();
@@ -735,13 +742,14 @@ pub(crate) fn start_game_recording_internal(app: &AppHandle) -> Result<GameRecor
             inner.state.completed_loops = 0;
             inner.state.target_mismatch = false;
             inner.state.last_error = None;
+            inner.activity_lease = Some(activity_lease);
             Ok((inner.token, inner.state.clone()))
         }
     };
     let (token, snapshot) = match result {
         Ok(value) => value,
         Err(error) => {
-            release_activity(app);
+            release_activity(app, Some(activity_lease));
             set_last_error(app, error.clone());
             return Err(error);
         }
@@ -796,7 +804,7 @@ fn start_game_playback_impl(
     if recording.events.is_empty() {
         return Err("当前游戏录制没有可回放的操作".into());
     }
-    claim_activity(app)?;
+    let activity_lease = claim_activity(app)?;
     let state = app.state::<GameRecorder>();
     let result = {
         let mut inner = state.lock();
@@ -812,13 +820,14 @@ fn start_game_playback_impl(
             inner.state.target_mismatch = false;
             inner.pending_mismatch_id = None;
             inner.state.last_error = None;
+            inner.activity_lease = Some(activity_lease);
             Ok((inner.token, inner.state.clone()))
         }
     };
     let (token, snapshot) = match result {
         Ok(value) => value,
         Err(error) => {
-            release_activity(app);
+            release_activity(app, Some(activity_lease));
             return Err(error);
         }
     };
@@ -974,7 +983,7 @@ fn playback_countdown(
         return;
     }
     if !allow_target_mismatch && !target_matches(&recording.target, &current_target) {
-        let snapshot = {
+        let (snapshot, lease) = {
             let state = app.state::<GameRecorder>();
             let mut inner = state.lock();
             if inner.token != token
@@ -987,9 +996,9 @@ fn playback_countdown(
             inner.state.countdown_remaining = 0;
             inner.state.target_mismatch = true;
             inner.pending_mismatch_id = Some(recording.id.clone());
-            inner.state.clone()
+            (inner.state.clone(), inner.activity_lease.take())
         };
-        release_activity(&app);
+        release_activity(&app, lease);
         emit_state(&app, &snapshot);
         crate::desktop::show_main_window(&app);
         app.state::<AppState>().log(
@@ -1122,7 +1131,8 @@ fn retry_pending_release_before_start(app: &AppHandle) -> Result<(), String> {
             inner.token = inner.token.wrapping_add(1);
             inner.state.activity = GameRecorderActivity::Idle;
             inner.state.last_error = None;
-            Ok(inner.state.clone())
+            let lease = inner.activity_lease.take();
+            Ok((inner.state.clone(), lease))
         } else {
             let error = "仍有按键或鼠标按钮未能释放，请再次使用停止或紧急停止热键";
             inner.state.activity = GameRecorderActivity::Playing;
@@ -1131,13 +1141,12 @@ fn retry_pending_release_before_start(app: &AppHandle) -> Result<(), String> {
         }
     };
     match outcome {
-        Ok(snapshot) => {
-            release_activity(app);
+        Ok((snapshot, lease)) => {
+            release_activity(app, lease);
             emit_state(app, &snapshot);
             Ok(())
         }
         Err((error, snapshot)) => {
-            app.state::<AppState>().lock().game_activity = true;
             emit_state(app, &snapshot);
             Err(error)
         }
@@ -1186,7 +1195,7 @@ fn play_event(app: &AppHandle, token: u64, event: &GameRecordedEvent) -> Result<
 }
 
 fn finish_playback(app: &AppHandle, token: u64, error: Option<String>) {
-    let (snapshot, released, final_message) = {
+    let (snapshot, lease, final_message) = {
         let state = app.state::<GameRecorder>();
         let mut inner = state.lock();
         if inner.token != token || inner.state.activity != GameRecorderActivity::Playing {
@@ -1213,13 +1222,14 @@ fn finish_playback(app: &AppHandle, token: u64, error: Option<String>) {
         };
         inner.state.last_error = final_error.clone();
         let final_message = final_error.unwrap_or_else(|| "游戏操作回放完成".into());
-        (inner.state.clone(), released, final_message)
+        let lease = if released {
+            inner.activity_lease.take()
+        } else {
+            None
+        };
+        (inner.state.clone(), lease, final_message)
     };
-    if released {
-        release_activity(app);
-    } else {
-        app.state::<AppState>().lock().game_activity = true;
-    }
+    release_activity(app, lease);
     emit_state(app, &snapshot);
     app.state::<AppState>().log(app, final_message);
 }
@@ -1234,33 +1244,31 @@ fn stop_game_activity_with_source(
         let activity = inner.state.activity;
         let token = inner.token;
         let idle_result = if activity == GameRecorderActivity::Idle {
-            let owned_activity = inner.pending_release;
             let released = release_tracked_inputs(&mut inner);
             let changed = inner.state.target_mismatch || !released;
             inner.state.target_mismatch = false;
             inner.pending_mismatch_id = None;
             inner.pending_release = !released;
-            if released && owned_activity {
+            let lease = if released {
+                inner.activity_lease.take()
+            } else {
+                None
+            };
+            if lease.is_some() {
                 inner.state.last_error = None;
             } else if !released {
                 inner.state.last_error = Some("部分按键或鼠标按钮释放失败，请再次紧急停止".into());
                 inner.state.activity = GameRecorderActivity::Playing;
             }
-            Some((inner.state.clone(), changed, released, owned_activity))
+            Some((inner.state.clone(), changed, lease))
         } else {
             None
         };
         (activity, token, idle_result)
     };
-    if let Some((snapshot, changed, released, owned_activity)) = idle_result {
+    if let Some((snapshot, changed, lease)) = idle_result {
         let _ = raw_input::end_capture();
-        if released && owned_activity {
-            release_activity(app);
-        } else {
-            if !released {
-                app.state::<AppState>().lock().game_activity = true;
-            }
-        }
+        release_activity(app, lease);
         if changed {
             emit_state(app, &snapshot);
         }
@@ -1271,7 +1279,7 @@ fn stop_game_activity_with_source(
     }
     let _ = raw_input::end_capture();
 
-    let (snapshot, released, was_pending_release) = {
+    let (snapshot, released, lease, was_pending_release) = {
         let mut inner = state.lock();
         let was_pending_release = inner.pending_release;
         let released = release_tracked_inputs(&mut inner);
@@ -1290,13 +1298,14 @@ fn stop_game_activity_with_source(
         } else {
             inner.state.last_error = Some("部分按键或鼠标按钮释放失败，请再次紧急停止".into());
         }
-        (inner.state.clone(), released, was_pending_release)
+        let lease = if released {
+            inner.activity_lease.take()
+        } else {
+            None
+        };
+        (inner.state.clone(), released, lease, was_pending_release)
     };
-    if released {
-        release_activity(app);
-    } else {
-        app.state::<AppState>().lock().game_activity = true;
-    }
+    release_activity(app, lease);
     emit_state(app, &snapshot);
     app.state::<AppState>().log(
         app,
@@ -1322,7 +1331,7 @@ fn finish_recording(
 ) -> GameRecorderState {
     let ended_at = ended_at.unwrap_or_else(|| raw_input::end_capture().captured_at);
     let state = app.state::<GameRecorder>();
-    let (session, storage_dir) = {
+    let (session, storage_dir, activity_lease) = {
         let mut inner = state.lock();
         if inner.token != token || inner.state.activity != GameRecorderActivity::Recording {
             return inner.state.clone();
@@ -1333,7 +1342,11 @@ fn finish_recording(
         inner.token = inner.token.wrapping_add(1);
         inner.state.activity = GameRecorderActivity::Idle;
         inner.state.countdown_remaining = 0;
-        (session, inner.storage_dir.clone())
+        (
+            session,
+            inner.storage_dir.clone(),
+            inner.activity_lease.take(),
+        )
     };
     let (events, duration_ms, target) = session.finish(stop_hotkey.as_deref(), Some(ended_at));
     let now = now_millis();
@@ -1385,7 +1398,7 @@ fn finish_recording(
         }
         inner.state.clone()
     };
-    release_activity(app);
+    release_activity(app, activity_lease);
     emit_state(app, &snapshot);
     app.state::<AppState>()
         .log(app, message.unwrap_or("游戏操作录制已保存"));
@@ -1418,7 +1431,7 @@ fn finish_recording_after_drain(
 
 fn abort_recording(app: &AppHandle, token: u64, error: &str) -> GameRecorderState {
     let _ = raw_input::end_capture();
-    let snapshot = {
+    let (snapshot, lease) = {
         let state = app.state::<GameRecorder>();
         let mut inner = state.lock();
         if inner.token != token || inner.state.activity != GameRecorderActivity::Recording {
@@ -1429,9 +1442,9 @@ fn abort_recording(app: &AppHandle, token: u64, error: &str) -> GameRecorderStat
         inner.state.activity = GameRecorderActivity::Idle;
         inner.state.countdown_remaining = 0;
         inner.state.last_error = Some(error.into());
-        inner.state.clone()
+        (inner.state.clone(), inner.activity_lease.take())
     };
-    release_activity(app);
+    release_activity(app, lease);
     emit_state(app, &snapshot);
     app.state::<AppState>().log(app, error);
     snapshot
@@ -1444,7 +1457,7 @@ fn abort_pending_activity(
     error: String,
 ) {
     let _ = raw_input::end_capture();
-    let snapshot = {
+    let (snapshot, lease) = {
         let state = app.state::<GameRecorder>();
         let mut inner = state.lock();
         if inner.token != token || inner.state.activity != activity {
@@ -1454,9 +1467,9 @@ fn abort_pending_activity(
         inner.state.activity = GameRecorderActivity::Idle;
         inner.state.countdown_remaining = 0;
         inner.state.last_error = Some(error.clone());
-        inner.state.clone()
+        (inner.state.clone(), inner.activity_lease.take())
     };
-    release_activity(app);
+    release_activity(app, lease);
     emit_state(app, &snapshot);
     app.state::<AppState>().log(app, error);
 }
@@ -1567,25 +1580,36 @@ fn scaled_event_delay(at_ms: u64, speed: f64) -> Duration {
     Duration::from_secs_f64(at_ms as f64 / 1000.0 / sanitize_speed(speed))
 }
 
-fn claim_activity(app: &AppHandle) -> Result<(), String> {
+fn claim_activity(app: &AppHandle) -> Result<AutomationLease, String> {
     let state = app.state::<AppState>();
     let mut inner = state.lock();
-    if inner.state.is_running || inner.state.is_recording || inner.game_activity {
+    if inner.state.is_running || inner.state.is_recording {
         Err("已有宏录制、宏执行或游戏录制任务正在进行".into())
     } else {
-        inner.game_activity = true;
+        let lease = inner
+            .automation_activity
+            .claim(AutomationModule::GameRecorder)
+            .ok_or_else(|| "已有宏录制、宏执行或游戏录制任务正在进行".to_string())?;
         inner.is_capturing_key = false;
-        Ok(())
+        Ok(lease)
     }
 }
 
 fn claim_temporary_activity(app: &AppHandle) -> Result<TemporaryActivityClaim, String> {
-    claim_activity(app)?;
-    Ok(TemporaryActivityClaim { app: app.clone() })
+    let lease = claim_activity(app)?;
+    Ok(TemporaryActivityClaim {
+        app: app.clone(),
+        lease,
+    })
 }
 
-fn release_activity(app: &AppHandle) {
-    app.state::<AppState>().lock().game_activity = false;
+fn release_activity(app: &AppHandle, lease: Option<AutomationLease>) {
+    if let Some(lease) = lease {
+        app.state::<AppState>()
+            .lock()
+            .automation_activity
+            .release(lease);
+    }
 }
 
 fn ensure_idle(inner: &GameRecorderRuntime) -> Result<(), String> {
@@ -1599,7 +1623,7 @@ fn ensure_idle(inner: &GameRecorderRuntime) -> Result<(), String> {
 fn ensure_global_idle(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let inner = state.lock();
-    if inner.state.is_running || inner.state.is_recording || inner.game_activity {
+    if inner.state.is_running || inner.state.is_recording || inner.automation_activity.is_active() {
         Err("宏录制、宏执行或游戏任务进行中，当前配置操作不可用".into())
     } else {
         Ok(())

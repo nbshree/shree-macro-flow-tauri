@@ -1,3 +1,4 @@
+mod automation_activity;
 mod buff_assistant;
 mod commands;
 mod desktop;
@@ -11,6 +12,7 @@ mod state;
 mod store;
 mod trade_assistant;
 mod updater;
+pub mod visual_workflow;
 
 use std::io;
 
@@ -41,10 +43,14 @@ pub fn run() {
             notices.extend(buff_notices);
             let (trade_state, trade_notices) = trade_assistant::TradeAssistant::load(app.handle())?;
             notices.extend(trade_notices);
+            let (visual_workflow_state, visual_workflow_notices) =
+                visual_workflow::VisualWorkflow::load(app.handle()).map_err(io::Error::other)?;
+            notices.extend(visual_workflow_notices);
             app.manage(AppState::new(profile_file, loaded.store));
             app.manage(game_state);
             app.manage(buff_state);
             app.manage(trade_state);
+            app.manage(visual_workflow_state);
             app.manage(desktop::WorkspaceState::default());
             app.manage(updater::PendingUpdate::default());
 
@@ -134,6 +140,15 @@ pub fn run() {
             trade_assistant::stop_trade_assistant,
             trade_assistant::start_trade_template_test,
             trade_assistant::stop_trade_template_test,
+            visual_workflow::runtime::get_visual_workflow_state,
+            visual_workflow::runtime::list_visual_workflow_capture_windows,
+            visual_workflow::runtime::capture_visual_workflow_preview,
+            visual_workflow::runtime::save_visual_workflow_detector_template,
+            visual_workflow::runtime::delete_visual_workflow_detector_template,
+            visual_workflow::runtime::save_visual_workflow,
+            visual_workflow::runtime::validate_visual_workflow,
+            visual_workflow::runtime::start_visual_workflow,
+            visual_workflow::runtime::stop_visual_workflow,
             internal_skill_ai::get_mystery_code_status,
             internal_skill_ai::open_ai_provider_registration,
             internal_skill_ai::save_and_validate_mystery_code,
@@ -153,6 +168,7 @@ pub fn run() {
             game_recorder::stop_game_activity_internal(app);
             buff_assistant::stop_buff_monitor_internal(app);
             trade_assistant::stop_internal(app, "应用退出，停止交易行助手");
+            visual_workflow::runtime::stop_internal(app, "应用退出，停止视觉流程");
             shortcuts::unregister_all(app);
         }
         _ => {}

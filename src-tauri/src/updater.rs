@@ -245,7 +245,7 @@ fn install_when_macro_idle(
     macro_idle_result(
         inner.state.is_running,
         inner.state.is_recording,
-        inner.game_activity,
+        inner.automation_activity.is_active(),
     )?;
 
     update.install(bytes).map_err(|error| {
@@ -299,14 +299,14 @@ fn ensure_macro_idle(app: &AppHandle) -> Result<(), AppUpdateError> {
     macro_idle_result(
         inner.state.is_running,
         inner.state.is_recording,
-        inner.game_activity,
+        inner.automation_activity.is_active(),
     )
 }
 
 fn macro_idle_result(
     is_running: bool,
     is_recording: bool,
-    game_activity: bool,
+    automation_active: bool,
 ) -> Result<(), AppUpdateError> {
     if is_recording {
         Err(AppUpdateError::new(
@@ -318,7 +318,7 @@ fn macro_idle_result(
             AppUpdateErrorCode::MacroBusy,
             "宏正在执行，不能安装更新，请先停止执行。",
         ))
-    } else if game_activity {
+    } else if automation_active {
         Err(AppUpdateError::new(
             AppUpdateErrorCode::MacroBusy,
             "游戏录制或回放正在进行，不能安装更新，请先停止当前任务。",

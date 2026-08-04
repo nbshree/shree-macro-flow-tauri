@@ -10,6 +10,8 @@ const idleState = {
   buffIsMonitoring: false,
   tradeActivity: 'stopped' as const,
   tradeIsRunning: false,
+  visualWorkflowIsRunning: false,
+  visualWorkflowHasUnsavedChanges: false,
   gameHasUnsavedChanges: false,
   macroHasUnsavedChanges: false
 }
@@ -42,6 +44,15 @@ describe('getInstallBlockedReason', () => {
     )
     expect(getInstallBlockedReason({ ...idleState, tradeActivity: 'testing' })).toBe(
       '交易行助手正在截图或执行点击，请先停止抢购或测试再安装更新。'
+    )
+  })
+
+  it('blocks updates while a visual workflow is active or has unsaved edits', () => {
+    expect(getInstallBlockedReason({ ...idleState, visualWorkflowIsRunning: true })).toBe(
+      '视觉流程正在执行，请先停止流程再安装更新。'
+    )
+    expect(getInstallBlockedReason({ ...idleState, visualWorkflowHasUnsavedChanges: true })).toBe(
+      '视觉流程有未保存的编辑，请先保存或撤销后再安装更新。'
     )
   })
 

@@ -11,6 +11,7 @@ use std::{
 };
 
 use crate::{
+    automation_activity::{AutomationLease, AutomationModule},
     buff_assistant::{BuffTarget, CapturePreview, CaptureWindowCandidate, NormalizedRect, windows},
     desktop::{Workspace, WorkspaceState},
     input,
@@ -50,6 +51,7 @@ struct RuntimeData {
     storage_directory: PathBuf,
     preview: Option<StoredPreview>,
     capture: Option<TradeCaptureControl>,
+    activity_lease: Option<AutomationLease>,
 }
 
 pub struct TradeAssistant {
@@ -80,6 +82,7 @@ impl TradeAssistant {
                     storage_directory: directory,
                     preview: None,
                     capture: None,
+                    activity_lease: None,
                 }),
             },
             notices,
@@ -304,7 +307,7 @@ pub(crate) fn start_internal(app: &AppHandle) -> Result<TradeAssistantState, Str
         storage::load_template(&directory, TradeTemplateKind::Purchase, &purchase.template)?;
     let guard_template =
         storage::load_template(&directory, TradeTemplateKind::Guard, &guard.template)?;
-    claim_activity(app)?;
+    let activity_lease = claim_activity(app)?;
     let run_id = {
         let mut inner = state.lock();
         inner.run_id = inner.run_id.wrapping_add(1);
@@ -320,6 +323,7 @@ pub(crate) fn start_internal(app: &AppHandle) -> Result<TradeAssistantState, Str
         inner.awaiting_purchase_reset = false;
         inner.last_error = None;
         inner.capture_slot = None;
+        inner.activity_lease = Some(activity_lease);
         inner.run_id
     };
     let flags = TradeCaptureFlags {
@@ -334,17 +338,40 @@ pub(crate) fn start_internal(app: &AppHandle) -> Result<TradeAssistantState, Str
         reference_height: target.reference_height,
     };
     match capture::start(window, flags) {
-        Ok(control) => state.lock().capture = Some(control),
-        Err(error) => {
-            {
+        Ok(control) => {
+            let mut control = Some(control);
+            let accepted = {
                 let mut inner = state.lock();
-                inner.run_id = inner.run_id.wrapping_add(1);
-                inner.is_running = false;
-                inner.activity = TradeAssistantActivity::Error;
-                inner.countdown_remaining = 0;
-                inner.last_error = Some(error.clone());
+                if inner.run_id == run_id && inner.activity_lease == Some(activity_lease) {
+                    inner.capture = control.take();
+                    true
+                } else {
+                    false
+                }
+            };
+            if !accepted {
+                if let Some(control) = control {
+                    let _ = control.stop();
+                }
+                release_activity(app, Some(activity_lease));
+                return Err("交易行助手启动已经取消".into());
             }
-            release_activity(app);
+        }
+        Err(error) => {
+            let lease = {
+                let mut inner = state.lock();
+                if inner.run_id == run_id && inner.activity_lease == Some(activity_lease) {
+                    inner.run_id = inner.run_id.wrapping_add(1);
+                    inner.is_running = false;
+                    inner.activity = TradeAssistantActivity::Error;
+                    inner.countdown_remaining = 0;
+                    inner.last_error = Some(error.clone());
+                    inner.activity_lease.take()
+                } else {
+                    Some(activity_lease)
+                }
+            };
+            release_activity(app, lease);
             return Err(error);
         }
     }
@@ -363,7 +390,7 @@ pub fn stop_trade_assistant(app: AppHandle) -> TradeAssistantState {
 
 pub(crate) fn stop_internal(app: &AppHandle, reason: &str) -> TradeAssistantState {
     let state = app.state::<TradeAssistant>();
-    let (control, changed, result) = {
+    let (control, lease, changed, result) = {
         let mut inner = state.lock();
         let changed = inner.is_running || inner.activity == TradeAssistantActivity::Testing;
         inner.run_id = inner.run_id.wrapping_add(1);
@@ -373,12 +400,17 @@ pub(crate) fn stop_internal(app: &AppHandle, reason: &str) -> TradeAssistantStat
         inner.capture_slot = None;
         inner.purchase_present = false;
         inner.guard_present = false;
-        (inner.capture.take(), changed, snapshot(&inner))
+        (
+            inner.capture.take(),
+            inner.activity_lease.take(),
+            changed,
+            snapshot(&inner),
+        )
     };
     if let Some(control) = control {
         let _ = control.stop();
     }
-    release_activity(app);
+    release_activity(app, lease);
     emit_state(app, &result);
     if changed {
         log(app, reason);
@@ -670,7 +702,7 @@ pub(crate) fn handle_capture_error(app: &AppHandle, run_id: u64, error: String) 
 
 fn fail_run(app: &AppHandle, run_id: u64, error: String) {
     let state = app.state::<TradeAssistant>();
-    let (control, result) = {
+    let (control, lease, result) = {
         let mut inner = state.lock();
         if inner.run_id != run_id {
             return;
@@ -680,19 +712,23 @@ fn fail_run(app: &AppHandle, run_id: u64, error: String) {
         inner.activity = TradeAssistantActivity::Error;
         inner.countdown_remaining = 0;
         inner.last_error = Some(error.clone());
-        (inner.capture.take(), snapshot(&inner))
+        (
+            inner.capture.take(),
+            inner.activity_lease.take(),
+            snapshot(&inner),
+        )
     };
     if let Some(control) = control {
         let _ = control.stop();
     }
-    release_activity(app);
+    release_activity(app, lease);
     emit_state(app, &result);
     log(app, format!("交易行助手停止：{error}"));
 }
 
 fn complete_run(app: &AppHandle, run_id: u64) {
     let state = app.state::<TradeAssistant>();
-    let (control, result) = {
+    let (control, lease, result) = {
         let mut inner = state.lock();
         if inner.run_id != run_id {
             return;
@@ -701,12 +737,16 @@ fn complete_run(app: &AppHandle, run_id: u64) {
         inner.is_running = false;
         inner.activity = TradeAssistantActivity::Completed;
         inner.countdown_remaining = 0;
-        (inner.capture.take(), snapshot(&inner))
+        (
+            inner.capture.take(),
+            inner.activity_lease.take(),
+            snapshot(&inner),
+        )
     };
     if let Some(control) = control {
         let _ = control.stop();
     }
-    release_activity(app);
+    release_activity(app, lease);
     emit_state(app, &result);
     log(
         app,
@@ -778,18 +818,25 @@ fn ensure_not_active(inner: &RuntimeData) -> Result<(), String> {
     }
 }
 
-fn claim_activity(app: &AppHandle) -> Result<(), String> {
+fn claim_activity(app: &AppHandle) -> Result<AutomationLease, String> {
     let state = app.state::<AppState>();
     let mut inner = state.lock();
-    if inner.state.is_running || inner.state.is_recording || inner.game_activity {
+    if inner.state.is_running || inner.state.is_recording {
         return Err("已有其他自动化任务正在运行".into());
     }
-    inner.game_activity = true;
-    Ok(())
+    inner
+        .automation_activity
+        .claim(AutomationModule::TradeAssistant)
+        .ok_or_else(|| "已有其他自动化任务正在运行".into())
 }
 
-fn release_activity(app: &AppHandle) {
-    app.state::<AppState>().lock().game_activity = false;
+fn release_activity(app: &AppHandle, lease: Option<AutomationLease>) {
+    if let Some(lease) = lease {
+        app.state::<AppState>()
+            .lock()
+            .automation_activity
+            .release(lease);
+    }
 }
 
 fn validate_hotkeys(settings: &TradeAssistantSettings) -> Result<(), String> {

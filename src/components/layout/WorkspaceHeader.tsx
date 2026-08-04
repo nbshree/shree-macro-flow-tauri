@@ -3,6 +3,7 @@ import {
   Castle,
   ChevronDown,
   Gamepad2,
+  GitBranch,
   LoaderCircle,
   Palette,
   Radar,
@@ -54,6 +55,12 @@ const workspaceLabels: Record<
     subtitle: '自动化流程管理',
     menuLabel: '宏流程',
     icon: Workflow
+  },
+  visualWorkflow: {
+    title: '视觉流程',
+    subtitle: '多点位、图片识别与条件循环编排',
+    menuLabel: '视觉流程',
+    icon: GitBranch
   },
   gameRecorder: {
     title: '游戏操作录制',

@@ -54,7 +54,7 @@ pub fn update_appearance(
 pub fn start_recording(app: AppHandle, state: State<'_, AppState>) -> MacroState {
     let unavailable = {
         let mut inner = state.lock();
-        if inner.state.is_running || inner.game_activity {
+        if inner.state.is_running || inner.automation_activity.is_active() {
             true
         } else {
             inner.is_capturing_key = false;
@@ -188,7 +188,7 @@ pub fn set_key_capture(state: State<'_, AppState>, enabled: bool) {
         enabled,
         inner.state.is_running,
         inner.state.is_recording,
-        inner.game_activity,
+        inner.automation_activity.is_active(),
     );
 }
 
@@ -791,7 +791,7 @@ pub(crate) fn start_run_internal(app: &AppHandle) -> MacroState {
         if let Err(message) = validate_run_start(
             inner.state.is_recording,
             inner.state.is_running,
-            inner.game_activity,
+            inner.automation_activity.is_active(),
             &inner.state.points,
         ) {
             Err(message)
@@ -1059,12 +1059,12 @@ fn can_change_point_action(current: PointAction, next: PointAction) -> bool {
 fn validate_run_start(
     is_recording: bool,
     is_running: bool,
-    game_activity: bool,
+    automation_active: bool,
     points: &[Point],
 ) -> Result<(), &'static str> {
     if is_recording {
         Err("录制中不能开始执行")
-    } else if game_activity {
+    } else if automation_active {
         Err("游戏录制或回放中不能开始执行宏")
     } else if points.is_empty() {
         Err("无法开始：流程步骤为空")
@@ -1081,9 +1081,9 @@ fn can_enable_key_capture(
     requested: bool,
     is_running: bool,
     is_recording: bool,
-    game_activity: bool,
+    automation_active: bool,
 ) -> bool {
-    requested && !is_running && !is_recording && !game_activity
+    requested && !is_running && !is_recording && !automation_active
 }
 
 fn enabled_point_indices(points: &[Point]) -> Vec<usize> {

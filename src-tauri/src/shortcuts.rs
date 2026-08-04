@@ -8,17 +8,19 @@ use crate::{
     commands::{
         capture_point_internal, start_run_internal, stop_macro_workspace_activity_internal,
     },
-    desktop::{ShortcutKind, Workspace, WorkspaceState},
+    desktop::{ShortcutKind, Workspace, WorkspaceState, start_visual_workflow_internal},
     game_recorder::{
         self, GameRecorder, start_game_playback_internal, start_game_recording_internal,
         stop_game_activity_from_hotkey,
     },
     model::EMERGENCY_STOP_HOTKEY,
     state::AppState,
-    trade_assistant,
+    trade_assistant, visual_workflow,
 };
 
 static MODULE_SHORTCUTS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+pub(crate) const VISUAL_WORKFLOW_START_HOTKEY: &str = "CommandOrControl+Alt+I";
+pub(crate) const VISUAL_WORKFLOW_STOP_HOTKEY: &str = "CommandOrControl+Alt+U";
 
 pub fn register_shortcuts(app: &AppHandle) -> bool {
     let workspace = app.state::<WorkspaceState>().active();
@@ -44,6 +46,7 @@ pub fn register_shortcuts(app: &AppHandle) -> bool {
                 stop_game_activity_from_hotkey(app, EMERGENCY_STOP_HOTKEY);
                 buff_assistant::stop_buff_monitor_internal(app);
                 trade_assistant::stop_internal(app, "紧急停止交易行助手");
+                visual_workflow::runtime::stop_internal(app, "紧急停止视觉流程");
             }
         })
     {
@@ -56,6 +59,9 @@ pub fn register_shortcuts(app: &AppHandle) -> bool {
         ShortcutKind::Macro => register_macro_shortcuts(app, &mut errors, &mut registered),
         ShortcutKind::GameRecorder => register_game_shortcuts(app, &mut errors, &mut registered),
         ShortcutKind::TradeAssistant => register_trade_shortcuts(app, &mut errors, &mut registered),
+        ShortcutKind::VisualWorkflow => {
+            register_visual_workflow_shortcuts(app, &mut errors, &mut registered)
+        }
         ShortcutKind::None => {}
     }
 
@@ -70,6 +76,7 @@ pub fn register_shortcuts(app: &AppHandle) -> bool {
         }
         Workspace::BuffAssistant
         | Workspace::TradeAssistant
+        | Workspace::VisualWorkflow
         | Workspace::Calculator
         | Workspace::TowerCalculator => {
             for error in errors {
@@ -78,6 +85,31 @@ pub fn register_shortcuts(app: &AppHandle) -> bool {
         }
     }
     succeeded
+}
+
+fn register_visual_workflow_shortcuts(
+    app: &AppHandle,
+    errors: &mut Vec<String>,
+    registered: &mut Vec<String>,
+) {
+    register_one(
+        app,
+        VISUAL_WORKFLOW_START_HOTKEY,
+        "开始视觉流程",
+        start_visual_workflow_internal,
+        errors,
+        registered,
+    );
+    register_one(
+        app,
+        VISUAL_WORKFLOW_STOP_HOTKEY,
+        "停止视觉流程",
+        |app| {
+            visual_workflow::runtime::stop_internal(app, "通过热键停止视觉流程");
+        },
+        errors,
+        registered,
+    );
 }
 
 fn register_trade_shortcuts(

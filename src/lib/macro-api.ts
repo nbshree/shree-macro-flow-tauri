@@ -332,6 +332,170 @@ export type TradeMetric = {
   guardPresent: boolean
 }
 
+export type VisualWorkflowPointLocation =
+  | { mode: 'windowRelative'; x: number; y: number }
+  | { mode: 'screenPhysical'; x: number; y: number }
+
+export type VisualWorkflowPointResource = {
+  id: string
+  name: string
+  location: VisualWorkflowPointLocation
+}
+
+export type VisualWorkflowDetectorResource = {
+  id: string
+  name: string
+  searchRegion: NormalizedRect
+  template: {
+    assetId: string
+    maskAssetId?: string
+    width: number
+    height: number
+    captureReferenceWidth: number
+    captureReferenceHeight: number
+  }
+  matchThreshold: number
+  confirmFrames: number
+  missingFrames: number
+  staleAfterMs: number
+}
+
+export type VisualWorkflowNumberParameter = {
+  id: string
+  name: string
+  defaultValue: number
+  minValue: number
+  maxValue: number
+}
+
+export type VisualWorkflowCounterResource = {
+  id: string
+  name: string
+  initialValue: number
+}
+
+export type VisualWorkflowNumberExpression =
+  | { type: 'literal'; value: number }
+  | { type: 'parameter'; parameterId: string }
+  | { type: 'counter'; counterId: string }
+
+export type VisualWorkflowCondition =
+  | {
+      type: 'detectorState'
+      detectorId: string
+      state: 'unknown' | 'present' | 'absent'
+    }
+  | {
+      type: 'counterCompare'
+      counterId: string
+      operator:
+        'equal' | 'notEqual' | 'lessThan' | 'lessThanOrEqual' | 'greaterThan' | 'greaterThanOrEqual'
+      value: VisualWorkflowNumberExpression
+    }
+  | { type: 'all'; conditions: VisualWorkflowCondition[] }
+  | { type: 'any'; conditions: VisualWorkflowCondition[] }
+  | { type: 'not'; condition: VisualWorkflowCondition }
+  | {
+      type: 'targetState'
+      state: 'exists' | 'foreground' | 'capturable'
+      expected: boolean
+    }
+
+type VisualWorkflowStepBase = {
+  id: string
+  label?: string
+  enabled: boolean
+}
+
+export type VisualWorkflowStep = VisualWorkflowStepBase &
+  (
+    | { type: 'sequence'; steps: VisualWorkflowStep[] }
+    | {
+        type: 'click'
+        pointId: string
+        button: 'left' | 'right' | 'middle'
+        clickCount: number
+      }
+    | { type: 'key'; chord: { keys: string[]; holdMs: number } }
+    | { type: 'delay'; durationMs: VisualWorkflowNumberExpression }
+    | {
+        type: 'if'
+        condition: VisualWorkflowCondition
+        thenBranch: VisualWorkflowStep
+        elseBranch?: VisualWorkflowStep
+      }
+    | {
+        type: 'repeat'
+        count: VisualWorkflowNumberExpression
+        maxIterations: number
+        body: VisualWorkflowStep
+      }
+    | {
+        type: 'repeatUntil'
+        condition: VisualWorkflowCondition
+        body: VisualWorkflowStep
+        timeoutMs: VisualWorkflowNumberExpression
+        pollIntervalMs: VisualWorkflowNumberExpression
+        maxIterations: number
+      }
+    | {
+        type: 'waitUntil'
+        condition: VisualWorkflowCondition
+        timeoutMs: VisualWorkflowNumberExpression
+        pollIntervalMs: VisualWorkflowNumberExpression
+      }
+    | {
+        type: 'counterAdd'
+        counterId: string
+        amount: VisualWorkflowNumberExpression
+      }
+    | { type: 'assert'; condition: VisualWorkflowCondition; message: string }
+    | { type: 'log'; message: string }
+    | { type: 'finish'; outcome: 'success' | 'failure'; message?: string }
+  )
+
+export type VisualWorkflowDefinition = {
+  schemaVersion: number
+  id: string
+  name: string
+  description?: string
+  target: BuffTarget | null
+  resources: {
+    points: VisualWorkflowPointResource[]
+    detectors: VisualWorkflowDetectorResource[]
+    parameters: VisualWorkflowNumberParameter[]
+    counters: VisualWorkflowCounterResource[]
+  }
+  safetyGuards: Array<{ condition: VisualWorkflowCondition; message: string }>
+  root: VisualWorkflowStep
+}
+
+export type VisualWorkflowDiagnostic = {
+  path: string
+  severity: 'error' | 'warning'
+  code: string
+  message: string
+}
+
+export type VisualWorkflowActivity =
+  'idle' | 'validating' | 'countdown' | 'running' | 'waiting' | 'testing' | 'completed' | 'error'
+
+export type VisualWorkflowState = {
+  runId: number
+  definition: VisualWorkflowDefinition
+  activity: VisualWorkflowActivity
+  isRunning: boolean
+  countdownRemaining: number
+  currentStepId: string | null
+  diagnostics: VisualWorkflowDiagnostic[]
+  lastError: string | null
+}
+
+export type VisualWorkflowProgress = Pick<
+  VisualWorkflowState,
+  'runId' | 'activity' | 'isRunning' | 'countdownRemaining' | 'currentStepId'
+>
+
 export type WindowResizeDirection =
   'East' | 'North' | 'NorthEast' | 'NorthWest' | 'South' | 'SouthEast' | 'SouthWest' | 'West'
 
@@ -341,7 +505,13 @@ export type WindowSize = {
 }
 
 export type Workspace =
-  'macro' | 'gameRecorder' | 'buffAssistant' | 'tradeAssistant' | 'calculator' | 'towerCalculator'
+  | 'macro'
+  | 'visualWorkflow'
+  | 'gameRecorder'
+  | 'buffAssistant'
+  | 'tradeAssistant'
+  | 'calculator'
+  | 'towerCalculator'
 
 export type WindowControlsAPI = {
   minimize: () => Promise<void>
@@ -445,6 +615,29 @@ export type MacroAPI = {
   onTradeAssistantState: (callback: (state: TradeAssistantState) => void) => () => void
   onTradeMetric: (callback: (metric: TradeMetric) => void) => () => void
   onTradeExecutionLog: (callback: (message: string) => void) => () => void
+  getVisualWorkflowState: () => Promise<VisualWorkflowState>
+  listVisualWorkflowCaptureWindows: () => Promise<CaptureWindowCandidate[]>
+  captureVisualWorkflowPreview: (windowId: string) => Promise<BuffCapturePreview>
+  saveVisualWorkflow: (definition: VisualWorkflowDefinition) => Promise<VisualWorkflowState>
+  validateVisualWorkflow: (
+    definition: VisualWorkflowDefinition
+  ) => Promise<VisualWorkflowDiagnostic[]>
+  startVisualWorkflow: (definition: VisualWorkflowDefinition) => Promise<VisualWorkflowState>
+  stopVisualWorkflow: () => Promise<VisualWorkflowState>
+  saveVisualWorkflowDetectorTemplate: (
+    definition: VisualWorkflowDefinition,
+    detectorId: string,
+    searchRegion: NormalizedRect,
+    crop: NormalizedRect,
+    maskDataUrl?: string
+  ) => Promise<VisualWorkflowState>
+  deleteVisualWorkflowDetectorTemplate: (
+    definition: VisualWorkflowDefinition,
+    detectorId: string
+  ) => Promise<VisualWorkflowState>
+  onVisualWorkflowState: (callback: (state: VisualWorkflowState) => void) => () => void
+  onVisualWorkflowProgress: (callback: (progress: VisualWorkflowProgress) => void) => () => void
+  onVisualWorkflowExecutionLog: (callback: (message: string) => void) => () => void
   window: WindowControlsAPI
 }
 
@@ -721,6 +914,41 @@ export const macroApi: MacroAPI = {
   onTradeAssistantState: (callback) => createEventListener('trade-assistant-state', callback),
   onTradeMetric: (callback) => createEventListener('trade-assistant-metric', callback),
   onTradeExecutionLog: (callback) => createEventListener('trade-assistant-execution-log', callback),
+  getVisualWorkflowState: () =>
+    callTauri(() => invoke<VisualWorkflowState>('get_visual_workflow_state')),
+  listVisualWorkflowCaptureWindows: () =>
+    callTauri(() => invoke<CaptureWindowCandidate[]>('list_visual_workflow_capture_windows')),
+  captureVisualWorkflowPreview: (windowId) =>
+    callTauri(() => invoke<BuffCapturePreview>('capture_visual_workflow_preview', { windowId })),
+  saveVisualWorkflow: (definition) =>
+    callTauri(() => invoke<VisualWorkflowState>('save_visual_workflow', { definition })),
+  validateVisualWorkflow: (definition) =>
+    callTauri(() => invoke<VisualWorkflowDiagnostic[]>('validate_visual_workflow', { definition })),
+  startVisualWorkflow: (definition) =>
+    callTauri(() => invoke<VisualWorkflowState>('start_visual_workflow', { definition })),
+  stopVisualWorkflow: () => callTauri(() => invoke<VisualWorkflowState>('stop_visual_workflow')),
+  saveVisualWorkflowDetectorTemplate: (definition, detectorId, searchRegion, crop, maskDataUrl) =>
+    callTauri(() =>
+      invoke<VisualWorkflowState>('save_visual_workflow_detector_template', {
+        definition,
+        detectorId,
+        searchRegion,
+        crop,
+        maskDataUrl
+      })
+    ),
+  deleteVisualWorkflowDetectorTemplate: (definition, detectorId) =>
+    callTauri(() =>
+      invoke<VisualWorkflowState>('delete_visual_workflow_detector_template', {
+        definition,
+        detectorId
+      })
+    ),
+  onVisualWorkflowState: (callback) => createEventListener('visual-workflow-state', callback),
+  onVisualWorkflowProgress: (callback) =>
+    createEventListener('visual-workflow-progress', callback),
+  onVisualWorkflowExecutionLog: (callback) =>
+    createEventListener('visual-workflow-execution-log', callback),
   window: windowControls
 }
 

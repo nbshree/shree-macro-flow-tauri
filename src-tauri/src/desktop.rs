@@ -8,7 +8,10 @@ use std::sync::{Mutex, MutexGuard};
 
 use serde::Deserialize;
 
-use crate::{buff_assistant, commands, game_recorder, shortcuts, state::AppState, trade_assistant};
+use crate::{
+    buff_assistant, commands, game_recorder, shortcuts, state::AppState, trade_assistant,
+    visual_workflow,
+};
 
 const MENU_SHOW: &str = "show-window";
 const MENU_START: &str = "start-run";
@@ -17,6 +20,8 @@ const MENU_START_BUFF_MONITOR: &str = "start-buff-monitor";
 const MENU_STOP_BUFF_MONITOR: &str = "stop-buff-monitor";
 const MENU_START_TRADE: &str = "start-trade-assistant";
 const MENU_STOP_TRADE: &str = "stop-trade-assistant";
+const MENU_START_VISUAL_WORKFLOW: &str = "start-visual-workflow";
+const MENU_STOP_VISUAL_WORKFLOW: &str = "stop-visual-workflow";
 const MENU_QUIT: &str = "quit";
 const TRAY_ID: &str = "main-tray";
 
@@ -25,6 +30,7 @@ const TRAY_ID: &str = "main-tray";
 pub enum Workspace {
     #[default]
     Macro,
+    VisualWorkflow,
     GameRecorder,
     BuffAssistant,
     TradeAssistant,
@@ -57,6 +63,7 @@ enum TrayMenuKind {
     Macro,
     BuffAssistant,
     TradeAssistant,
+    VisualWorkflow,
     Common,
 }
 
@@ -65,6 +72,7 @@ pub(crate) enum ShortcutKind {
     Macro,
     GameRecorder,
     TradeAssistant,
+    VisualWorkflow,
     None,
 }
 
@@ -72,6 +80,7 @@ impl Workspace {
     fn menu_kind(self) -> TrayMenuKind {
         match self {
             Self::Macro => TrayMenuKind::Macro,
+            Self::VisualWorkflow => TrayMenuKind::VisualWorkflow,
             Self::BuffAssistant => TrayMenuKind::BuffAssistant,
             Self::TradeAssistant => TrayMenuKind::TradeAssistant,
             Self::GameRecorder | Self::Calculator | Self::TowerCalculator => TrayMenuKind::Common,
@@ -81,6 +90,7 @@ impl Workspace {
     pub(crate) fn shortcut_kind(self) -> ShortcutKind {
         match self {
             Self::Macro => ShortcutKind::Macro,
+            Self::VisualWorkflow => ShortcutKind::VisualWorkflow,
             Self::GameRecorder => ShortcutKind::GameRecorder,
             Self::TradeAssistant => ShortcutKind::TradeAssistant,
             Self::BuffAssistant | Self::Calculator | Self::TowerCalculator => ShortcutKind::None,
@@ -109,6 +119,23 @@ fn create_tray_menu(app: &AppHandle, workspace: Workspace) -> tauri::Result<Menu
         TrayMenuKind::TradeAssistant => {
             let start = MenuItem::with_id(app, MENU_START_TRADE, "开始抢购", true, None::<&str>)?;
             let stop = MenuItem::with_id(app, MENU_STOP_TRADE, "停止抢购", true, None::<&str>)?;
+            Menu::with_items(app, &[&show, &start, &stop, &separator, &quit])
+        }
+        TrayMenuKind::VisualWorkflow => {
+            let start = MenuItem::with_id(
+                app,
+                MENU_START_VISUAL_WORKFLOW,
+                "开始视觉流程",
+                true,
+                None::<&str>,
+            )?;
+            let stop = MenuItem::with_id(
+                app,
+                MENU_STOP_VISUAL_WORKFLOW,
+                "停止视觉流程",
+                true,
+                None::<&str>,
+            )?;
             Menu::with_items(app, &[&show, &start, &stop, &separator, &quit])
         }
         TrayMenuKind::Common => Menu::with_items(app, &[&show, &separator, &quit]),
@@ -141,6 +168,10 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
             }
             MENU_STOP_TRADE => {
                 trade_assistant::stop_internal(app, "从托盘停止交易行助手");
+            }
+            MENU_START_VISUAL_WORKFLOW => start_visual_workflow_internal(app),
+            MENU_STOP_VISUAL_WORKFLOW => {
+                visual_workflow::runtime::stop_internal(app, "从托盘停止视觉流程");
             }
             MENU_QUIT => quit_app(app),
             _ => {}
@@ -206,6 +237,9 @@ fn stop_workspace_activity(app: &AppHandle, workspace: Workspace) -> Result<(), 
         Workspace::TradeAssistant => {
             trade_assistant::stop_internal(app, "切换工作区，停止交易行助手");
         }
+        Workspace::VisualWorkflow => {
+            visual_workflow::runtime::stop_internal(app, "切换工作区，停止视觉流程");
+        }
         Workspace::Calculator | Workspace::TowerCalculator => {}
     }
     Ok(())
@@ -219,11 +253,23 @@ pub fn show_main_window(app: &AppHandle) {
     }
 }
 
+pub(crate) fn start_visual_workflow_internal(app: &AppHandle) {
+    let definition = app
+        .state::<visual_workflow::VisualWorkflow>()
+        .snapshot()
+        .definition;
+    if let Err(error) = visual_workflow::start_visual_workflow(app.clone(), definition) {
+        app.state::<AppState>()
+            .log(app, format!("视觉流程启动失败：{error}"));
+    }
+}
+
 pub fn quit_app(app: &AppHandle) {
     commands::stop_macro_workspace_activity_internal(app);
     game_recorder::stop_game_activity_internal(app);
     buff_assistant::stop_buff_monitor_internal(app);
     trade_assistant::stop_internal(app, "退出应用，停止交易行助手");
+    visual_workflow::runtime::stop_internal(app, "退出应用，停止视觉流程");
     {
         let state = app.state::<AppState>();
         state.lock().is_quitting = true;
@@ -239,6 +285,10 @@ mod tests {
     #[test]
     fn workspace_uses_the_expected_tray_menu() {
         assert_eq!(Workspace::Macro.menu_kind(), TrayMenuKind::Macro);
+        assert_eq!(
+            Workspace::VisualWorkflow.menu_kind(),
+            TrayMenuKind::VisualWorkflow
+        );
         assert_eq!(
             Workspace::BuffAssistant.menu_kind(),
             TrayMenuKind::BuffAssistant
@@ -262,12 +312,20 @@ mod tests {
             serde_json::from_str::<Workspace>("\"tradeAssistant\""),
             Ok(Workspace::TradeAssistant)
         ));
+        assert!(matches!(
+            serde_json::from_str::<Workspace>("\"visualWorkflow\""),
+            Ok(Workspace::VisualWorkflow)
+        ));
         assert!(serde_json::from_str::<Workspace>("\"unknown\"").is_err());
     }
 
     #[test]
     fn workspace_selects_only_its_own_shortcut_group() {
         assert_eq!(Workspace::Macro.shortcut_kind(), ShortcutKind::Macro);
+        assert_eq!(
+            Workspace::VisualWorkflow.shortcut_kind(),
+            ShortcutKind::VisualWorkflow
+        );
         assert_eq!(
             Workspace::GameRecorder.shortcut_kind(),
             ShortcutKind::GameRecorder
