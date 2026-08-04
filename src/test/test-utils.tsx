@@ -13,7 +13,8 @@ import type {
   GameRecorderState,
   MacroAPI,
   MacroPointPatch,
-  MacroState
+  MacroState,
+  TradeAssistantState
 } from '@/lib/macro-api'
 
 export function createMacroState(overrides: Partial<MacroState> = {}): MacroState {
@@ -222,6 +223,38 @@ export function createMacroApi(
     lastConfidence: 0,
     lastError: null
   }
+  const tradeState: TradeAssistantState = {
+    config: {
+      schemaVersion: 2,
+      target: null,
+      purchaseTemplate: null,
+      guardTemplate: null,
+      coordinates: { record: null, purchase: null, search: null },
+      settings: {
+        purchaseCount: 1,
+        clickIntervalMs: 50,
+        purchaseConfirmFrames: 2,
+        purchaseToSearchDelayMs: 100,
+        searchToClickDelayMs: 100,
+        startDelaySeconds: 3,
+        hotkeys: {
+          capture: 'CommandOrControl+Alt+Q',
+          start: 'CommandOrControl+Alt+P',
+          stop: 'CommandOrControl+Alt+O'
+        }
+      }
+    },
+    activity: 'stopped',
+    isRunning: false,
+    countdownRemaining: 0,
+    completedPurchases: 0,
+    captureSlot: null,
+    purchaseConfidence: 0,
+    purchasePresent: false,
+    guardConfidence: 0,
+    guardPresent: false,
+    lastError: null
+  }
   return {
     getAppVersion: vi.fn<MacroAPI['getAppVersion']>(async () => '1.8.1'),
     switchWorkspace: vi.fn<MacroAPI['switchWorkspace']>(async () => undefined),
@@ -326,6 +359,22 @@ export function createMacroApi(
     onBuffMetric: vi.fn(() => () => undefined),
     onBuffExecutionLog: vi.fn(() => () => undefined),
     onBuffOverlayState: vi.fn(() => () => undefined),
+    getTradeAssistantState: vi.fn(async () => tradeState),
+    listTradeCaptureWindows: vi.fn(async () => []),
+    captureTradePreview: vi.fn(async () => {
+      throw new Error('not configured')
+    }),
+    saveTradeTemplate: vi.fn(async () => tradeState),
+    deleteTradeTemplate: vi.fn(async () => tradeState),
+    updateTradeAssistantSettings: vi.fn(async () => tradeState),
+    setTradeCoordinateCapture: vi.fn(async () => tradeState),
+    startTradeAssistant: vi.fn(async () => tradeState),
+    stopTradeAssistant: vi.fn(async () => tradeState),
+    startTradeTemplateTest: vi.fn(async () => tradeState),
+    stopTradeTemplateTest: vi.fn(async () => tradeState),
+    onTradeAssistantState: vi.fn(() => () => undefined),
+    onTradeMetric: vi.fn(() => () => undefined),
+    onTradeExecutionLog: vi.fn(() => () => undefined),
     window: {
       minimize: vi.fn(async () => undefined),
       toggleMaximize: vi.fn(async () => undefined),

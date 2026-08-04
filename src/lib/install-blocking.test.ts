@@ -8,6 +8,8 @@ const idleState = {
   gameActivity: 'idle' as const,
   buffActivity: 'stopped' as const,
   buffIsMonitoring: false,
+  tradeActivity: 'stopped' as const,
+  tradeIsRunning: false,
   gameHasUnsavedChanges: false,
   macroHasUnsavedChanges: false
 }
@@ -31,6 +33,15 @@ describe('getInstallBlockedReason', () => {
   it('blocks updates while Buff monitoring is active', () => {
     expect(getInstallBlockedReason({ ...idleState, buffIsMonitoring: true })).toBe(
       'Buff 助手正在捕获游戏画面，请先停止监控或测试再安装更新。'
+    )
+  })
+
+  it('blocks updates while the trade assistant is running or testing', () => {
+    expect(getInstallBlockedReason({ ...idleState, tradeIsRunning: true })).toBe(
+      '交易行助手正在截图或执行点击，请先停止抢购或测试再安装更新。'
+    )
+    expect(getInstallBlockedReason({ ...idleState, tradeActivity: 'testing' })).toBe(
+      '交易行助手正在截图或执行点击，请先停止抢购或测试再安装更新。'
     )
   })
 

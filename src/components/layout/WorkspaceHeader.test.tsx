@@ -97,6 +97,7 @@ describe('WorkspaceHeader', () => {
     expect(screen.getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual([
       '宏流程',
       'Buff 助手',
+      '交易行助手',
       '游戏录制',
       '防守内功',
       '拆塔评估'
@@ -116,6 +117,10 @@ describe('WorkspaceHeader', () => {
     expect(screen.getByRole('menuitemradio', { name: 'Buff 助手' })).toHaveAttribute(
       'aria-checked',
       'false'
+    )
+    expect(screen.getByRole('menuitemradio', { name: '交易行助手' })).toHaveAttribute(
+      'data-state',
+      'unchecked'
     )
 
     await user.click(screen.getByRole('menuitemradio', { name: '拆塔评估' }))

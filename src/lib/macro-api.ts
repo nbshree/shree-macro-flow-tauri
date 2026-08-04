@@ -271,6 +271,67 @@ export type BuffMetric = {
   present: boolean
 }
 
+export type PhysicalPoint = { x: number; y: number }
+export type TradeCoordinateSlot = 'record' | 'purchase' | 'search'
+export type TradeTemplateKind = 'purchase' | 'guard'
+export type TradeTemplateSummary = { id: string; width: number; height: number }
+export type TradeTemplateConfig = {
+  searchRegion: NormalizedRect
+  template: TradeTemplateSummary
+}
+export type TradeAssistantHotkeys = { capture: string; start: string; stop: string }
+export type TradeAssistantSettings = {
+  purchaseCount: number
+  clickIntervalMs: number
+  purchaseConfirmFrames: number
+  purchaseToSearchDelayMs: number
+  searchToClickDelayMs: number
+  startDelaySeconds: number
+  hotkeys: TradeAssistantHotkeys
+}
+export type TradeCoordinates = {
+  record: PhysicalPoint | null
+  purchase: PhysicalPoint | null
+  search: PhysicalPoint | null
+}
+export type TradeAssistantConfig = {
+  schemaVersion: number
+  target: BuffTarget | null
+  purchaseTemplate: TradeTemplateConfig | null
+  guardTemplate: TradeTemplateConfig | null
+  coordinates: TradeCoordinates
+  settings: TradeAssistantSettings
+}
+export type TradeAssistantActivity =
+  | 'stopped'
+  | 'countdown'
+  | 'validating'
+  | 'clickingRecord'
+  | 'buying'
+  | 'reopeningSearch'
+  | 'testing'
+  | 'completed'
+  | 'error'
+export type TradeAssistantState = {
+  config: TradeAssistantConfig
+  activity: TradeAssistantActivity
+  isRunning: boolean
+  countdownRemaining: number
+  completedPurchases: number
+  captureSlot: TradeCoordinateSlot | null
+  purchaseConfidence: number
+  purchasePresent: boolean
+  guardConfidence: number
+  guardPresent: boolean
+  lastError: string | null
+}
+export type TradeMetric = {
+  purchaseConfidence: number
+  purchasePresent: boolean
+  guardConfidence: number
+  guardPresent: boolean
+}
+
 export type WindowResizeDirection =
   'East' | 'North' | 'NorthEast' | 'NorthWest' | 'South' | 'SouthEast' | 'SouthWest' | 'West'
 
@@ -280,7 +341,7 @@ export type WindowSize = {
 }
 
 export type Workspace =
-  'macro' | 'gameRecorder' | 'buffAssistant' | 'calculator' | 'towerCalculator'
+  'macro' | 'gameRecorder' | 'buffAssistant' | 'tradeAssistant' | 'calculator' | 'towerCalculator'
 
 export type WindowControlsAPI = {
   minimize: () => Promise<void>
@@ -365,6 +426,25 @@ export type MacroAPI = {
   onBuffMetric: (callback: (metric: BuffMetric) => void) => () => void
   onBuffExecutionLog: (callback: (message: string) => void) => () => void
   onBuffOverlayState: (callback: (state: BuffOverlayState) => void) => () => void
+  getTradeAssistantState: () => Promise<TradeAssistantState>
+  listTradeCaptureWindows: () => Promise<CaptureWindowCandidate[]>
+  captureTradePreview: (windowId: string) => Promise<BuffCapturePreview>
+  saveTradeTemplate: (
+    kind: TradeTemplateKind,
+    searchRegion: NormalizedRect,
+    crop: NormalizedRect,
+    maskDataUrl?: string
+  ) => Promise<TradeAssistantState>
+  deleteTradeTemplate: (kind: TradeTemplateKind) => Promise<TradeAssistantState>
+  updateTradeAssistantSettings: (settings: TradeAssistantSettings) => Promise<TradeAssistantState>
+  setTradeCoordinateCapture: (slot: TradeCoordinateSlot | null) => Promise<TradeAssistantState>
+  startTradeAssistant: () => Promise<TradeAssistantState>
+  stopTradeAssistant: () => Promise<TradeAssistantState>
+  startTradeTemplateTest: (windowId: string) => Promise<TradeAssistantState>
+  stopTradeTemplateTest: () => Promise<TradeAssistantState>
+  onTradeAssistantState: (callback: (state: TradeAssistantState) => void) => () => void
+  onTradeMetric: (callback: (metric: TradeMetric) => void) => () => void
+  onTradeExecutionLog: (callback: (message: string) => void) => () => void
   window: WindowControlsAPI
 }
 
@@ -611,6 +691,36 @@ export const macroApi: MacroAPI = {
   onBuffMetric: (callback) => createEventListener('buff-assistant-metric', callback),
   onBuffExecutionLog: (callback) => createEventListener('buff-assistant-execution-log', callback),
   onBuffOverlayState: (callback) => createEventListener('buff-overlay-state', callback),
+  getTradeAssistantState: () =>
+    callTauri(() => invoke<TradeAssistantState>('get_trade_assistant_state')),
+  listTradeCaptureWindows: () =>
+    callTauri(() => invoke<CaptureWindowCandidate[]>('list_trade_capture_windows')),
+  captureTradePreview: (windowId) =>
+    callTauri(() => invoke<BuffCapturePreview>('capture_trade_preview', { windowId })),
+  saveTradeTemplate: (kind, searchRegion, crop, maskDataUrl) =>
+    callTauri(() =>
+      invoke<TradeAssistantState>('save_trade_template', {
+        kind,
+        searchRegion,
+        crop,
+        maskDataUrl
+      })
+    ),
+  deleteTradeTemplate: (kind) =>
+    callTauri(() => invoke<TradeAssistantState>('delete_trade_template', { kind })),
+  updateTradeAssistantSettings: (settings) =>
+    callTauri(() => invoke<TradeAssistantState>('update_trade_assistant_settings', { settings })),
+  setTradeCoordinateCapture: (slot) =>
+    callTauri(() => invoke<TradeAssistantState>('set_trade_coordinate_capture', { slot })),
+  startTradeAssistant: () => callTauri(() => invoke<TradeAssistantState>('start_trade_assistant')),
+  stopTradeAssistant: () => callTauri(() => invoke<TradeAssistantState>('stop_trade_assistant')),
+  startTradeTemplateTest: (windowId) =>
+    callTauri(() => invoke<TradeAssistantState>('start_trade_template_test', { windowId })),
+  stopTradeTemplateTest: () =>
+    callTauri(() => invoke<TradeAssistantState>('stop_trade_template_test')),
+  onTradeAssistantState: (callback) => createEventListener('trade-assistant-state', callback),
+  onTradeMetric: (callback) => createEventListener('trade-assistant-metric', callback),
+  onTradeExecutionLog: (callback) => createEventListener('trade-assistant-execution-log', callback),
   window: windowControls
 }
 

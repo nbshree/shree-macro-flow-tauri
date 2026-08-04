@@ -5,6 +5,7 @@ export type WorkspaceView = Workspace
 export const WORKSPACE_ORDER = [
   'macro',
   'buffAssistant',
+  'tradeAssistant',
   'gameRecorder',
   'calculator',
   'towerCalculator'

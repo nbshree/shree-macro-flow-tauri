@@ -8,6 +8,7 @@ import {
   Radar,
   RefreshCw,
   Sparkles,
+  ShoppingCart,
   Workflow,
   type LucideIcon
 } from 'lucide-react'
@@ -65,6 +66,12 @@ const workspaceLabels: Record<
     subtitle: '屏幕识别、固定时间轴与悬浮预警',
     menuLabel: 'Buff 助手',
     icon: Radar
+  },
+  tradeAssistant: {
+    title: '交易行助手',
+    subtitle: '搜索记录连点、双图标识别与循环购买',
+    menuLabel: '交易行助手',
+    icon: ShoppingCart
   },
   calculator: {
     title: '防守内功评估',

@@ -1,4 +1,8 @@
-import type { BuffAssistantActivity, GameRecorderActivity } from './macro-api'
+import type {
+  BuffAssistantActivity,
+  GameRecorderActivity,
+  TradeAssistantActivity
+} from './macro-api'
 
 type InstallBlockingState = {
   macroIsRunning: boolean
@@ -6,6 +10,8 @@ type InstallBlockingState = {
   gameActivity: GameRecorderActivity
   buffActivity: BuffAssistantActivity
   buffIsMonitoring: boolean
+  tradeActivity: TradeAssistantActivity
+  tradeIsRunning: boolean
   gameHasUnsavedChanges: boolean
   macroHasUnsavedChanges: boolean
 }
@@ -16,6 +22,8 @@ export function getInstallBlockedReason({
   gameActivity,
   buffActivity,
   buffIsMonitoring,
+  tradeActivity,
+  tradeIsRunning,
   gameHasUnsavedChanges,
   macroHasUnsavedChanges
 }: InstallBlockingState): string | null {
@@ -29,6 +37,9 @@ export function getInstallBlockedReason({
   }
   if (buffIsMonitoring || buffActivity === 'testing') {
     return 'Buff 助手正在捕获游戏画面，请先停止监控或测试再安装更新。'
+  }
+  if (tradeIsRunning || tradeActivity === 'testing') {
+    return '交易行助手正在截图或执行点击，请先停止抢购或测试再安装更新。'
   }
   if (gameHasUnsavedChanges) {
     return '游戏录制有未保存的配置，请先保存或撤销后再安装更新。'

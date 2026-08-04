@@ -8,13 +8,15 @@ use std::sync::{Mutex, MutexGuard};
 
 use serde::Deserialize;
 
-use crate::{buff_assistant, commands, game_recorder, shortcuts, state::AppState};
+use crate::{buff_assistant, commands, game_recorder, shortcuts, state::AppState, trade_assistant};
 
 const MENU_SHOW: &str = "show-window";
 const MENU_START: &str = "start-run";
 const MENU_STOP: &str = "stop-run";
 const MENU_START_BUFF_MONITOR: &str = "start-buff-monitor";
 const MENU_STOP_BUFF_MONITOR: &str = "stop-buff-monitor";
+const MENU_START_TRADE: &str = "start-trade-assistant";
+const MENU_STOP_TRADE: &str = "stop-trade-assistant";
 const MENU_QUIT: &str = "quit";
 const TRAY_ID: &str = "main-tray";
 
@@ -25,6 +27,7 @@ pub enum Workspace {
     Macro,
     GameRecorder,
     BuffAssistant,
+    TradeAssistant,
     Calculator,
     TowerCalculator,
 }
@@ -53,6 +56,7 @@ impl WorkspaceState {
 enum TrayMenuKind {
     Macro,
     BuffAssistant,
+    TradeAssistant,
     Common,
 }
 
@@ -60,6 +64,7 @@ enum TrayMenuKind {
 pub(crate) enum ShortcutKind {
     Macro,
     GameRecorder,
+    TradeAssistant,
     None,
 }
 
@@ -68,6 +73,7 @@ impl Workspace {
         match self {
             Self::Macro => TrayMenuKind::Macro,
             Self::BuffAssistant => TrayMenuKind::BuffAssistant,
+            Self::TradeAssistant => TrayMenuKind::TradeAssistant,
             Self::GameRecorder | Self::Calculator | Self::TowerCalculator => TrayMenuKind::Common,
         }
     }
@@ -76,6 +82,7 @@ impl Workspace {
         match self {
             Self::Macro => ShortcutKind::Macro,
             Self::GameRecorder => ShortcutKind::GameRecorder,
+            Self::TradeAssistant => ShortcutKind::TradeAssistant,
             Self::BuffAssistant | Self::Calculator | Self::TowerCalculator => ShortcutKind::None,
         }
     }
@@ -97,6 +104,11 @@ fn create_tray_menu(app: &AppHandle, workspace: Workspace) -> tauri::Result<Menu
                 MenuItem::with_id(app, MENU_START_BUFF_MONITOR, "开始监控", true, None::<&str>)?;
             let stop =
                 MenuItem::with_id(app, MENU_STOP_BUFF_MONITOR, "停止监控", true, None::<&str>)?;
+            Menu::with_items(app, &[&show, &start, &stop, &separator, &quit])
+        }
+        TrayMenuKind::TradeAssistant => {
+            let start = MenuItem::with_id(app, MENU_START_TRADE, "开始抢购", true, None::<&str>)?;
+            let stop = MenuItem::with_id(app, MENU_STOP_TRADE, "停止抢购", true, None::<&str>)?;
             Menu::with_items(app, &[&show, &start, &stop, &separator, &quit])
         }
         TrayMenuKind::Common => Menu::with_items(app, &[&show, &separator, &quit]),
@@ -122,6 +134,14 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
                 let _ = buff_assistant::start_buff_monitor_internal(app);
             }
             MENU_STOP_BUFF_MONITOR => buff_assistant::stop_buff_monitor_internal(app),
+            MENU_START_TRADE => {
+                if let Err(error) = trade_assistant::start_internal(app) {
+                    trade_assistant::report_action_error(app, error);
+                }
+            }
+            MENU_STOP_TRADE => {
+                trade_assistant::stop_internal(app, "从托盘停止交易行助手");
+            }
             MENU_QUIT => quit_app(app),
             _ => {}
         })
@@ -156,7 +176,14 @@ pub fn switch_workspace(app: AppHandle, workspace: Workspace) -> Result<(), Stri
         .map_err(|error| error.to_string())?;
 
     *workspace_state.lock() = workspace;
-    shortcuts::register_shortcuts(&app);
+    if !shortcuts::register_shortcuts(&app) {
+        *workspace_state.lock() = current;
+        let old_menu = create_tray_menu(&app, current).map_err(|error| error.to_string())?;
+        tray.set_menu(Some(old_menu))
+            .map_err(|error| error.to_string())?;
+        shortcuts::register_shortcuts(&app);
+        return Err("目标工作区热键注册失败，已恢复原工作区；原任务保持停止".into());
+    }
     Ok(())
 }
 
@@ -176,6 +203,9 @@ fn stop_workspace_activity(app: &AppHandle, workspace: Workspace) -> Result<(), 
         Workspace::BuffAssistant => {
             buff_assistant::stop_buff_workspace_activity_internal(app)?;
         }
+        Workspace::TradeAssistant => {
+            trade_assistant::stop_internal(app, "切换工作区，停止交易行助手");
+        }
         Workspace::Calculator | Workspace::TowerCalculator => {}
     }
     Ok(())
@@ -193,6 +223,7 @@ pub fn quit_app(app: &AppHandle) {
     commands::stop_macro_workspace_activity_internal(app);
     game_recorder::stop_game_activity_internal(app);
     buff_assistant::stop_buff_monitor_internal(app);
+    trade_assistant::stop_internal(app, "退出应用，停止交易行助手");
     {
         let state = app.state::<AppState>();
         state.lock().is_quitting = true;
@@ -212,6 +243,10 @@ mod tests {
             Workspace::BuffAssistant.menu_kind(),
             TrayMenuKind::BuffAssistant
         );
+        assert_eq!(
+            Workspace::TradeAssistant.menu_kind(),
+            TrayMenuKind::TradeAssistant
+        );
         assert_eq!(Workspace::GameRecorder.menu_kind(), TrayMenuKind::Common);
         assert_eq!(Workspace::Calculator.menu_kind(), TrayMenuKind::Common);
         assert_eq!(Workspace::TowerCalculator.menu_kind(), TrayMenuKind::Common);
@@ -222,6 +257,10 @@ mod tests {
         assert!(matches!(
             serde_json::from_str::<Workspace>("\"buffAssistant\""),
             Ok(Workspace::BuffAssistant)
+        ));
+        assert!(matches!(
+            serde_json::from_str::<Workspace>("\"tradeAssistant\""),
+            Ok(Workspace::TradeAssistant)
         ));
         assert!(serde_json::from_str::<Workspace>("\"unknown\"").is_err());
     }
@@ -234,6 +273,10 @@ mod tests {
             ShortcutKind::GameRecorder
         );
         assert_eq!(Workspace::BuffAssistant.shortcut_kind(), ShortcutKind::None);
+        assert_eq!(
+            Workspace::TradeAssistant.shortcut_kind(),
+            ShortcutKind::TradeAssistant
+        );
         assert_eq!(Workspace::Calculator.shortcut_kind(), ShortcutKind::None);
         assert_eq!(
             Workspace::TowerCalculator.shortcut_kind(),

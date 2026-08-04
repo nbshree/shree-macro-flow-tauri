@@ -1,10 +1,10 @@
 mod audio;
-mod capture;
-mod detector;
+pub(crate) mod capture;
+pub(crate) mod detector;
 mod model;
 mod storage;
 mod timeline;
-mod windows;
+pub(crate) mod windows;
 
 use std::{
     io::Cursor,

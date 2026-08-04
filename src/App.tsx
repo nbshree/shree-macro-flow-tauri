@@ -18,6 +18,7 @@ import { useAppUpdater } from './hooks/useAppUpdater'
 import { useBuffAssistantController } from './hooks/useBuffAssistantController'
 import { useGameRecorderController } from './hooks/useGameRecorderController'
 import { useMacroController } from './hooks/useMacroController'
+import { useTradeAssistantController } from './hooks/useTradeAssistantController'
 import { getInstallBlockedReason } from './lib/install-blocking'
 import {
   loadWorkspacePreference,
@@ -29,6 +30,9 @@ import { ThemeProvider } from './themes'
 const BuffAssistantPage = lazy(() =>
   import('./features/buff-assistant').then((module) => ({ default: module.BuffAssistantPage }))
 )
+const TradeAssistantPage = lazy(() =>
+  import('./features/trade-assistant').then((module) => ({ default: module.TradeAssistantPage }))
+)
 
 function App(): React.JSX.Element {
   const controller = useMacroController()
@@ -36,6 +40,7 @@ function App(): React.JSX.Element {
     controller.state.isRunning || controller.state.isRecording
   )
   const buffAssistantController = useBuffAssistantController()
+  const tradeAssistantController = useTradeAssistantController()
   const gameActivityBusy = gameRecorderController.state.activity !== 'idle'
   const macroUiController = gameActivityBusy ? { ...controller, isEditingLocked: true } : controller
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceView>('macro')
@@ -51,6 +56,8 @@ function App(): React.JSX.Element {
     gameActivity: gameRecorderController.state.activity,
     buffActivity: buffAssistantController.state.activity,
     buffIsMonitoring: buffAssistantController.state.isMonitoring,
+    tradeActivity: tradeAssistantController.state.activity,
+    tradeIsRunning: tradeAssistantController.state.isRunning,
     gameHasUnsavedChanges:
       gameRecorderController.hasHotkeyChanges ||
       gameRecorderController.hasPlaybackChanges ||
@@ -136,6 +143,17 @@ function App(): React.JSX.Element {
                   <AlertDescription>{workspaceSwitchError}</AlertDescription>
                 </Alert>
               ) : null}
+              <section
+                className="workspace-view"
+                id="trade-assistant-workspace"
+                role="region"
+                aria-labelledby="workspace-title"
+                hidden={activeWorkspace !== 'tradeAssistant'}
+              >
+                <Suspense fallback={<div className="workspace-loading">正在载入交易行助手…</div>}>
+                  <TradeAssistantPage controller={tradeAssistantController} />
+                </Suspense>
+              </section>
               <section
                 className="workspace-view"
                 id="buff-assistant-workspace"

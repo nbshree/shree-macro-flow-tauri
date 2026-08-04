@@ -1,3 +1,5 @@
+use std::sync::{Mutex, OnceLock};
+
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -13,35 +15,51 @@ use crate::{
     },
     model::EMERGENCY_STOP_HOTKEY,
     state::AppState,
+    trade_assistant,
 };
 
-pub fn register_shortcuts(app: &AppHandle) {
+static MODULE_SHORTCUTS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+
+pub fn register_shortcuts(app: &AppHandle) -> bool {
     let workspace = app.state::<WorkspaceState>().active();
     let manager = app.global_shortcut();
     let mut errors = Vec::new();
 
-    if let Err(error) = manager.unregister_all() {
-        errors.push(format!("清理旧热键失败：{error}"));
+    let registered = MODULE_SHORTCUTS.get_or_init(|| Mutex::new(Vec::new()));
+    let mut registered = registered
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    for accelerator in registered.drain(..) {
+        if manager.is_registered(accelerator.as_str())
+            && let Err(error) = manager.unregister(accelerator.as_str())
+        {
+            errors.push(format!("清理旧热键 {accelerator} 失败：{error}"));
+        }
     }
 
-    if let Err(error) = manager.on_shortcut(EMERGENCY_STOP_HOTKEY, |app, _, event| {
-        if event.state == ShortcutState::Pressed {
-            stop_macro_workspace_activity_internal(app);
-            stop_game_activity_from_hotkey(app, EMERGENCY_STOP_HOTKEY);
-            buff_assistant::stop_buff_monitor_internal(app);
-        }
-    }) {
+    if !manager.is_registered(EMERGENCY_STOP_HOTKEY)
+        && let Err(error) = manager.on_shortcut(EMERGENCY_STOP_HOTKEY, |app, _, event| {
+            if event.state == ShortcutState::Pressed {
+                stop_macro_workspace_activity_internal(app);
+                stop_game_activity_from_hotkey(app, EMERGENCY_STOP_HOTKEY);
+                buff_assistant::stop_buff_monitor_internal(app);
+                trade_assistant::stop_internal(app, "紧急停止交易行助手");
+            }
+        })
+    {
         errors.push(format!(
             "热键注册失败：紧急停止 {EMERGENCY_STOP_HOTKEY}（{error}）"
         ));
     }
 
     match workspace.shortcut_kind() {
-        ShortcutKind::Macro => register_macro_shortcuts(app, &mut errors),
-        ShortcutKind::GameRecorder => register_game_shortcuts(app, &mut errors),
+        ShortcutKind::Macro => register_macro_shortcuts(app, &mut errors, &mut registered),
+        ShortcutKind::GameRecorder => register_game_shortcuts(app, &mut errors, &mut registered),
+        ShortcutKind::TradeAssistant => register_trade_shortcuts(app, &mut errors, &mut registered),
         ShortcutKind::None => {}
     }
 
+    let succeeded = errors.is_empty();
     match workspace {
         Workspace::Macro => {
             app.state::<AppState>().replace_hotkey_errors(app, errors);
@@ -50,15 +68,65 @@ pub fn register_shortcuts(app: &AppHandle) {
             app.state::<GameRecorder>()
                 .replace_hotkey_errors(app, errors);
         }
-        Workspace::BuffAssistant | Workspace::Calculator | Workspace::TowerCalculator => {
+        Workspace::BuffAssistant
+        | Workspace::TradeAssistant
+        | Workspace::Calculator
+        | Workspace::TowerCalculator => {
             for error in errors {
                 app.state::<AppState>().log(app, error);
             }
         }
     }
+    succeeded
 }
 
-fn register_macro_shortcuts(app: &AppHandle, errors: &mut Vec<String>) {
+fn register_trade_shortcuts(
+    app: &AppHandle,
+    errors: &mut Vec<String>,
+    registered: &mut Vec<String>,
+) {
+    let hotkeys = trade_assistant::hotkeys(app);
+    register_one(
+        app,
+        &hotkeys.capture,
+        "采集交易坐标",
+        |app| {
+            if let Err(error) = trade_assistant::capture_coordinate_internal(app) {
+                trade_assistant::report_action_error(app, error);
+            }
+        },
+        errors,
+        registered,
+    );
+    register_one(
+        app,
+        &hotkeys.start,
+        "开始交易行抢购",
+        |app| {
+            if let Err(error) = trade_assistant::start_internal(app) {
+                trade_assistant::report_action_error(app, error);
+            }
+        },
+        errors,
+        registered,
+    );
+    register_one(
+        app,
+        &hotkeys.stop,
+        "停止交易行抢购",
+        |app| {
+            trade_assistant::stop_internal(app, "通过热键停止交易行助手");
+        },
+        errors,
+        registered,
+    );
+}
+
+fn register_macro_shortcuts(
+    app: &AppHandle,
+    errors: &mut Vec<String>,
+    registered: &mut Vec<String>,
+) {
     let hotkeys = app
         .state::<AppState>()
         .lock()
@@ -74,6 +142,7 @@ fn register_macro_shortcuts(app: &AppHandle, errors: &mut Vec<String>) {
             capture_point_internal(app);
         },
         errors,
+        registered,
     );
     register_one(
         app,
@@ -83,6 +152,7 @@ fn register_macro_shortcuts(app: &AppHandle, errors: &mut Vec<String>) {
             start_run_internal(app);
         },
         errors,
+        registered,
     );
     register_one(
         app,
@@ -92,10 +162,15 @@ fn register_macro_shortcuts(app: &AppHandle, errors: &mut Vec<String>) {
             stop_macro_workspace_activity_internal(app);
         },
         errors,
+        registered,
     );
 }
 
-fn register_game_shortcuts(app: &AppHandle, errors: &mut Vec<String>) {
+fn register_game_shortcuts(
+    app: &AppHandle,
+    errors: &mut Vec<String>,
+    registered: &mut Vec<String>,
+) {
     let hotkeys = game_recorder::hotkeys(app);
     register_one(
         app,
@@ -105,6 +180,7 @@ fn register_game_shortcuts(app: &AppHandle, errors: &mut Vec<String>) {
             let _ = start_game_recording_internal(app);
         },
         errors,
+        registered,
     );
     register_one(
         app,
@@ -115,6 +191,7 @@ fn register_game_shortcuts(app: &AppHandle, errors: &mut Vec<String>) {
             stop_game_activity_from_hotkey(app, &accelerator);
         },
         errors,
+        registered,
     );
     register_one(
         app,
@@ -124,6 +201,7 @@ fn register_game_shortcuts(app: &AppHandle, errors: &mut Vec<String>) {
             let _ = start_game_playback_internal(app, false);
         },
         errors,
+        registered,
     );
 }
 
@@ -137,6 +215,7 @@ fn register_one<F>(
     label: &str,
     handler: F,
     errors: &mut Vec<String>,
+    registered: &mut Vec<String>,
 ) where
     F: Fn(&AppHandle) + Send + Sync + 'static,
 {
@@ -153,6 +232,8 @@ fn register_one<F>(
         errors.push(format!(
             "热键注册失败：{label} {accelerator_owned}（{error}）"
         ));
+    } else {
+        registered.push(accelerator_owned);
     }
 }
 

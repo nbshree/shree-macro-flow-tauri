@@ -33,6 +33,25 @@ impl TemplateData {
             mask: imageops::resize(&self.mask, width, height, imageops::FilterType::Nearest),
         }
     }
+
+    pub fn scaled_xy(&self, scale_x: f32, scale_y: f32) -> Self {
+        let scale_x = if scale_x.is_finite() {
+            scale_x.clamp(0.25, 4.0)
+        } else {
+            1.0
+        };
+        let scale_y = if scale_y.is_finite() {
+            scale_y.clamp(0.25, 4.0)
+        } else {
+            1.0
+        };
+        let width = ((self.image.width() as f32 * scale_x).round() as u32).max(4);
+        let height = ((self.image.height() as f32 * scale_y).round() as u32).max(4);
+        Self {
+            image: imageops::resize(&self.image, width, height, imageops::FilterType::Triangle),
+            mask: imageops::resize(&self.mask, width, height, imageops::FilterType::Nearest),
+        }
+    }
 }
 
 pub struct StablePresenceDetector {

@@ -9,6 +9,7 @@ mod raw_input;
 mod shortcuts;
 mod state;
 mod store;
+mod trade_assistant;
 mod updater;
 
 use std::io;
@@ -38,9 +39,12 @@ pub fn run() {
             notices.extend(game_notices);
             let (buff_state, buff_notices) = buff_assistant::BuffAssistant::load(app.handle())?;
             notices.extend(buff_notices);
+            let (trade_state, trade_notices) = trade_assistant::TradeAssistant::load(app.handle())?;
+            notices.extend(trade_notices);
             app.manage(AppState::new(profile_file, loaded.store));
             app.manage(game_state);
             app.manage(buff_state);
+            app.manage(trade_state);
             app.manage(desktop::WorkspaceState::default());
             app.manage(updater::PendingUpdate::default());
 
@@ -119,6 +123,17 @@ pub fn run() {
             buff_assistant::stop_buff_template_test,
             buff_assistant::play_buff_assistant_sound,
             buff_assistant::set_buff_overlay_edit_mode,
+            trade_assistant::get_trade_assistant_state,
+            trade_assistant::list_trade_capture_windows,
+            trade_assistant::capture_trade_preview,
+            trade_assistant::save_trade_template,
+            trade_assistant::delete_trade_template,
+            trade_assistant::update_trade_assistant_settings,
+            trade_assistant::set_trade_coordinate_capture,
+            trade_assistant::start_trade_assistant,
+            trade_assistant::stop_trade_assistant,
+            trade_assistant::start_trade_template_test,
+            trade_assistant::stop_trade_template_test,
             internal_skill_ai::get_mystery_code_status,
             internal_skill_ai::open_ai_provider_registration,
             internal_skill_ai::save_and_validate_mystery_code,
@@ -137,6 +152,7 @@ pub fn run() {
             commands::stop_macro_workspace_activity_internal(app);
             game_recorder::stop_game_activity_internal(app);
             buff_assistant::stop_buff_monitor_internal(app);
+            trade_assistant::stop_internal(app, "应用退出，停止交易行助手");
             shortcuts::unregister_all(app);
         }
         _ => {}
