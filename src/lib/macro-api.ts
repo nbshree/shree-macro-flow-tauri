@@ -205,8 +205,11 @@ export type BuffOverlaySettings = {
   showWaitingDot: boolean
   width: number
   height: number
-  showBorder: boolean
   colorScheme: 'gold' | 'blackWhite'
+}
+
+export type BuffCaptureSettings = {
+  showSystemBorder: boolean
 }
 
 export type BuffAssistantSettings = {
@@ -217,6 +220,7 @@ export type BuffAssistantSettings = {
   missingFrames: number
   sound: BuffSoundSettings
   overlay: BuffOverlaySettings
+  capture: BuffCaptureSettings
 }
 
 export type BuffAssistantConfig = {
@@ -234,7 +238,12 @@ export type BuffAssistantState = {
   expectedAtUnixMs: number | null
   lastConfidence: number
   lastError: string | null
+  captureBorderSupported: boolean
+  captureBorderNotice: string | null
 }
+
+export type BorderlessCaptureAccessResult =
+  'allowed' | 'unsupported' | 'deniedByUser' | 'deniedBySystem' | 'notDeclared'
 
 export type CaptureWindowCandidate = {
   id: string
@@ -268,7 +277,6 @@ export type BuffOverlayState = {
   expectedAtUnixMs: number | null
   emittedAtUnixMs: number
   editable: boolean
-  showBorder: boolean
   colorScheme: BuffOverlaySettings['colorScheme']
 }
 
@@ -359,6 +367,7 @@ export type MacroAPI = {
   ) => Promise<BuffAssistantState>
   deleteBuffTemplate: () => Promise<BuffAssistantState>
   updateBuffAssistantSettings: (settings: BuffAssistantSettings) => Promise<BuffAssistantState>
+  requestBuffBorderlessCaptureAccess: () => Promise<BorderlessCaptureAccessResult>
   startBuffMonitor: () => Promise<BuffAssistantState>
   stopBuffMonitor: () => Promise<BuffAssistantState>
   startBuffTemplateTest: (windowId: string) => Promise<BuffAssistantState>
@@ -603,6 +612,10 @@ export const macroApi: MacroAPI = {
   deleteBuffTemplate: () => callTauri(() => invoke<BuffAssistantState>('delete_buff_template')),
   updateBuffAssistantSettings: (settings) =>
     callTauri(() => invoke<BuffAssistantState>('update_buff_assistant_settings', { settings })),
+  requestBuffBorderlessCaptureAccess: () =>
+    callTauri(() =>
+      invoke<BorderlessCaptureAccessResult>('request_buff_borderless_capture_access')
+    ),
   startBuffMonitor: () => callTauri(() => invoke<BuffAssistantState>('start_buff_monitor')),
   stopBuffMonitor: () => callTauri(() => invoke<BuffAssistantState>('stop_buff_monitor')),
   startBuffTemplateTest: (windowId) =>

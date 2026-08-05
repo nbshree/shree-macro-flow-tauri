@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const CONFIG_SCHEMA_VERSION: u32 = 7;
+pub const CONFIG_SCHEMA_VERSION: u32 = 8;
 pub const DEFAULT_CYCLE_MS: u64 = 20_000;
 pub const DEFAULT_DEADLINE_GRACE_MS: u64 = 600;
 const PREVIOUS_DEFAULT_CYCLE_MS: u64 = 20_180;
@@ -108,8 +108,6 @@ pub struct BuffOverlaySettings {
     pub width: u32,
     #[serde(default = "default_overlay_height")]
     pub height: u32,
-    #[serde(default = "enabled_by_default")]
-    pub show_border: bool,
     #[serde(default)]
     pub color_scheme: BuffOverlayColorScheme,
 }
@@ -122,8 +120,22 @@ impl Default for BuffOverlaySettings {
             show_waiting_dot: false,
             width: DEFAULT_OVERLAY_WIDTH,
             height: DEFAULT_OVERLAY_HEIGHT,
-            show_border: true,
             color_scheme: BuffOverlayColorScheme::Gold,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuffCaptureSettings {
+    #[serde(default = "enabled_by_default")]
+    pub show_system_border: bool,
+}
+
+impl Default for BuffCaptureSettings {
+    fn default() -> Self {
+        Self {
+            show_system_border: true,
         }
     }
 }
@@ -155,6 +167,8 @@ pub struct BuffAssistantSettings {
     pub missing_frames: u32,
     pub sound: BuffSoundSettings,
     pub overlay: BuffOverlaySettings,
+    #[serde(default)]
+    pub capture: BuffCaptureSettings,
 }
 
 impl Default for BuffAssistantSettings {
@@ -167,6 +181,7 @@ impl Default for BuffAssistantSettings {
             missing_frames: DEFAULT_MISSING_FRAMES,
             sound: BuffSoundSettings::default(),
             overlay: BuffOverlaySettings::default(),
+            capture: BuffCaptureSettings::default(),
         }
     }
 }
@@ -269,6 +284,18 @@ pub struct BuffAssistantState {
     pub expected_at_unix_ms: Option<i64>,
     pub last_confidence: f32,
     pub last_error: Option<String>,
+    pub capture_border_supported: bool,
+    pub capture_border_notice: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BorderlessCaptureAccessResult {
+    Allowed,
+    Unsupported,
+    DeniedByUser,
+    DeniedBySystem,
+    NotDeclared,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -312,7 +339,6 @@ pub struct BuffOverlayState {
     pub expected_at_unix_ms: Option<i64>,
     pub emitted_at_unix_ms: i64,
     pub editable: bool,
-    pub show_border: bool,
     pub color_scheme: BuffOverlayColorScheme,
 }
 
@@ -353,6 +379,7 @@ mod tests {
                 ..BuffSoundSettings::default()
             },
             overlay: BuffOverlaySettings::default(),
+            capture: BuffCaptureSettings::default(),
         };
         settings.sanitize();
         assert_eq!(settings.cycle_ms, 5_000);
@@ -435,8 +462,36 @@ mod tests {
         assert_eq!(settings.deadline_grace_ms, DEFAULT_DEADLINE_GRACE_MS);
         assert_eq!(settings.overlay.width, DEFAULT_OVERLAY_WIDTH);
         assert_eq!(settings.overlay.height, DEFAULT_OVERLAY_HEIGHT);
-        assert!(settings.overlay.show_border);
+        assert!(settings.capture.show_system_border);
         assert_eq!(settings.overlay.color_scheme, BuffOverlayColorScheme::Gold);
+    }
+
+    #[test]
+    fn legacy_settings_default_to_showing_the_system_capture_border() {
+        let settings: BuffAssistantSettings = serde_json::from_str(
+            r#"{
+                "cycleMs": 20000,
+                "threshold": 0.95,
+                "confirmFrames": 3,
+                "missingFrames": 5,
+                "sound": {
+                    "triggerEnabled": true,
+                    "prewarnThreeEnabled": true,
+                    "prewarnTwoEnabled": true,
+                    "prewarnOneEnabled": true,
+                    "volume": 0.45
+                },
+                "overlay": {
+                    "x": 40,
+                    "y": 100,
+                    "showWaitingDot": false,
+                    "showBorder": false
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert!(settings.capture.show_system_border);
     }
 
     #[test]
