@@ -2,16 +2,21 @@ use std::{
     collections::HashMap,
     fs::File,
     path::{Path, PathBuf},
-    sync::mpsc::{self, Sender},
+    sync::mpsc::{self, RecvTimeoutError, Sender},
     thread,
     time::Duration,
 };
 
 use rodio::{Decoder, DeviceSinkBuilder, Player, Source, buffer::SamplesBuffer, source::SineWave};
+use tauri::{AppHandle, Manager};
+
+use crate::state::AppState;
 
 use super::model::BuffSoundCue;
 
 const MAX_SOUND_DURATION: Duration = Duration::from_secs(10);
+const PLAYBACK_POLL_INTERVAL: Duration = Duration::from_millis(20);
+const AUDIO_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Debug)]
 pub enum ResolvedSoundSource {
@@ -31,45 +36,60 @@ pub struct AudioEngine {
 }
 
 impl AudioEngine {
-    pub fn start() -> (Self, Option<String>) {
+    pub fn start(app: AppHandle) -> Self {
         let (sender, receiver) = mpsc::channel::<AudioRequest>();
-        let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
         thread::spawn(move || {
-            let stream = match DeviceSinkBuilder::open_default_sink() {
-                Ok(mut stream) => {
-                    stream.log_on_drop(false);
-                    let _ = ready_sender.send(Ok(()));
-                    stream
-                }
-                Err(error) => {
-                    let _ = ready_sender.send(Err(format!("声音设备初始化失败：{error}")));
-                    return;
-                }
-            };
-            let mut player: Option<Player> = None;
             let mut cache = HashMap::<PathBuf, SamplesBuffer>::new();
-            while let Ok(request) = receiver.recv() {
-                if let Some(previous) = player.take() {
-                    previous.stop();
+            while let Ok(mut request) = receiver.recv() {
+                let mut stream = match DeviceSinkBuilder::open_default_sink() {
+                    Ok(stream) => stream,
+                    Err(error) => {
+                        app.state::<AppState>()
+                            .log(&app, format!("提示音播放失败：无法打开声音设备：{error}"));
+                        continue;
+                    }
+                };
+                stream.log_on_drop(false);
+
+                'playback: loop {
+                    let player = Player::connect_new(stream.mixer());
+                    player.set_volume(request.volume.clamp(0.0, 1.0));
+                    match request.source {
+                        ResolvedSoundSource::Sine => player.append(sine_wave(request.cue)),
+                        ResolvedSoundSource::Wav(path) => match cached_wav(&path, &mut cache) {
+                            Ok(sound) => player.append(sound),
+                            Err(_) => player.append(sine_wave(request.cue)),
+                        },
+                    }
+
+                    loop {
+                        match receiver.recv_timeout(PLAYBACK_POLL_INTERVAL) {
+                            Ok(next_request) => {
+                                player.stop();
+                                request = next_request;
+                                continue 'playback;
+                            }
+                            Err(RecvTimeoutError::Timeout) if player.empty() => break,
+                            Err(RecvTimeoutError::Timeout) => {}
+                            Err(RecvTimeoutError::Disconnected) => return,
+                        }
+                    }
+
+                    // Keep the device alive briefly so countdown sounds can reuse one stream,
+                    // then release it instead of holding headphones open for the app lifetime.
+                    match receiver.recv_timeout(AUDIO_IDLE_TIMEOUT) {
+                        Ok(next_request) => {
+                            request = next_request;
+                            continue 'playback;
+                        }
+                        Err(RecvTimeoutError::Timeout) => break 'playback,
+                        Err(RecvTimeoutError::Disconnected) => return,
+                    }
                 }
-                let next = Player::connect_new(stream.mixer());
-                next.set_volume(request.volume.clamp(0.0, 1.0));
-                match request.source {
-                    ResolvedSoundSource::Sine => next.append(sine_wave(request.cue)),
-                    ResolvedSoundSource::Wav(path) => match cached_wav(&path, &mut cache) {
-                        Ok(sound) => next.append(sound),
-                        Err(_) => next.append(sine_wave(request.cue)),
-                    },
-                }
-                player = Some(next);
             }
         });
 
-        let warning = ready_receiver
-            .recv_timeout(Duration::from_secs(2))
-            .ok()
-            .and_then(Result::err);
-        (Self { sender }, warning)
+        Self { sender }
     }
 
     pub fn play(&self, cue: BuffSoundCue, source: ResolvedSoundSource, volume: f32) {
