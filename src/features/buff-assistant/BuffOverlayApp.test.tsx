@@ -78,6 +78,35 @@ describe('BuffOverlayApp', () => {
     expect(screen.getByText('19.5')).toBeInTheDocument()
   })
 
+  it('updates the countdown every 100 milliseconds and clears the timer on unmount', () => {
+    const api: MacroAPI = createMacroApi()
+    api.onBuffOverlayState = vi.fn((callback) => {
+      emitOverlayState = callback
+      return () => undefined
+    })
+    installMacroApi(api)
+    const view = render(<BuffOverlayApp />)
+
+    emit({
+      mode: 'countdown',
+      message: '距离下一次金周天',
+      expectedAtUnixMs: Date.now() + 20_000,
+      emittedAtUnixMs: Date.now(),
+      editable: false,
+      colorScheme: 'gold'
+    })
+
+    expect(screen.getByText('20.0')).toBeInTheDocument()
+    act(() => vi.advanceTimersByTime(99))
+    expect(screen.getByText('20.0')).toBeInTheDocument()
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.getByText('19.9')).toBeInTheDocument()
+    expect(vi.getTimerCount()).toBe(1)
+
+    view.unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('shows the simplified waiting message', () => {
     renderOverlay()
 

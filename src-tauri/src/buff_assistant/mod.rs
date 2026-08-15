@@ -70,6 +70,43 @@ struct RuntimeData {
     reconnect_generation: u64,
     overlay_generation: u64,
     overlay_editing: bool,
+    overlay_window: OverlayWindowCache,
+}
+
+#[derive(Default)]
+struct OverlayWindowCache {
+    visible: bool,
+    size: Option<(u32, u32)>,
+}
+
+impl OverlayWindowCache {
+    fn mark_visible(&mut self) -> bool {
+        if self.visible {
+            false
+        } else {
+            self.visible = true;
+            true
+        }
+    }
+
+    fn mark_hidden(&mut self) -> bool {
+        let was_visible = self.visible;
+        self.visible = false;
+        was_visible
+    }
+
+    fn update_size(&mut self, size: (u32, u32)) -> bool {
+        if self.size == Some(size) {
+            false
+        } else {
+            self.size = Some(size);
+            true
+        }
+    }
+
+    fn invalidate_size(&mut self) {
+        self.size = None;
+    }
 }
 
 pub struct BuffAssistant {
@@ -116,6 +153,7 @@ impl BuffAssistant {
                     reconnect_generation: 0,
                     overlay_generation: 0,
                     overlay_editing: false,
+                    overlay_window: OverlayWindowCache::default(),
                 }),
                 audio,
             },
@@ -404,6 +442,7 @@ pub fn start_buff_monitor_internal(app: &AppHandle) -> Result<(), String> {
             inner.reconnect_generation,
         )
     };
+    preload_monitor_sounds(&state);
     match windows::find_target(&target) {
         Ok(Some(window)) => {
             if let Err(error) = attach_monitor_capture(app, window, generation) {
@@ -571,6 +610,7 @@ fn set_buff_overlay_edit_mode_internal(
             let mut inner = state.lock();
             inner.overlay_editing = true;
             inner.overlay_generation = inner.overlay_generation.wrapping_add(1);
+            inner.overlay_window.invalidate_size();
         }
         overlay
             .set_resizable(true)
@@ -582,6 +622,7 @@ fn set_buff_overlay_edit_mode_internal(
             .set_ignore_cursor_events(false)
             .map_err(|error| error.to_string())?;
         overlay.show().map_err(|error| error.to_string())?;
+        state.lock().overlay_window.visible = true;
         emit_overlay(
             app,
             BuffOverlayState {
@@ -609,6 +650,8 @@ fn set_buff_overlay_edit_mode_internal(
             inner.config.settings.overlay.height =
                 (f64::from(size.height) / scale_factor).round() as u32;
             inner.config.settings.sanitize();
+            inner.overlay_window.visible = true;
+            inner.overlay_window.invalidate_size();
             storage::save_config(&inner.storage_directory, &inner.config)?;
         }
         overlay
@@ -695,7 +738,7 @@ pub(crate) fn handle_detection_frame(
         return;
     }
 
-    let (actions, snapshot, sound) = {
+    let (actions, action_context) = {
         let mut inner = state.lock();
         if inner.capture_purpose != Some(CapturePurpose::Monitor) || !inner.monitor_requested {
             return;
@@ -720,11 +763,13 @@ pub(crate) fn handle_detection_frame(
                     .saturating_duration_since(Instant::now())
                     .as_millis() as i64
         });
-        (
-            actions,
-            snapshot_from_runtime(&inner),
-            inner.config.settings.sound.clone(),
-        )
+        let action_context = (!actions.is_empty()).then(|| {
+            (
+                snapshot_from_runtime(&inner),
+                inner.config.settings.sound.clone(),
+            )
+        });
+        (actions, action_context)
     };
     if emit_metric {
         let _ = app.emit(
@@ -738,6 +783,7 @@ pub(crate) fn handle_detection_frame(
     if actions.is_empty() {
         return;
     }
+    let (snapshot, sound) = action_context.expect("actions require an emission context");
     emit_state(app, &snapshot);
     for action in actions {
         match action {
@@ -1035,6 +1081,31 @@ fn play_configured_sound(
     state.audio.play(cue, resolved, sound.volume);
 }
 
+fn preload_monitor_sounds(state: &BuffAssistant) {
+    let paths = {
+        let inner = state.lock();
+        let sound = &inner.config.settings.sound;
+        [
+            (sound.trigger_enabled, BuffSoundCue::Triggered),
+            (sound.prewarn_three_enabled, BuffSoundCue::PrewarnThree),
+            (sound.prewarn_two_enabled, BuffSoundCue::PrewarnTwo),
+            (sound.prewarn_one_enabled, BuffSoundCue::PrewarnOne),
+        ]
+        .into_iter()
+        .filter_map(|(enabled, cue)| {
+            enabled
+                .then(|| resolve_sound_source(&inner, cue, sound.source(cue)).ok())
+                .flatten()
+        })
+        .filter_map(|source| match source {
+            ResolvedSoundSource::Wav(path) => Some(path),
+            ResolvedSoundSource::Sine => None,
+        })
+        .collect::<Vec<_>>()
+    };
+    state.audio.preload(paths);
+}
+
 fn resolve_sound_source(
     inner: &RuntimeData,
     cue: BuffSoundCue,
@@ -1202,8 +1273,8 @@ fn show_countdown_overlay(app: &AppHandle, expected_at_unix_ms: Option<i64>) {
     if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = overlay.set_ignore_cursor_events(true);
         let _ = overlay.set_focusable(false);
-        let _ = overlay.show();
     }
+    ensure_overlay_visible(app);
     emit_overlay(
         app,
         BuffOverlayState {
@@ -1229,8 +1300,8 @@ fn show_confirming_overlay(app: &AppHandle) {
     if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = overlay.set_ignore_cursor_events(true);
         let _ = overlay.set_focusable(false);
-        let _ = overlay.show();
     }
+    ensure_overlay_visible(app);
     emit_overlay(
         app,
         BuffOverlayState {
@@ -1263,8 +1334,8 @@ fn show_transient_overlay(
     if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = overlay.set_ignore_cursor_events(true);
         let _ = overlay.set_focusable(false);
-        let _ = overlay.show();
     }
+    ensure_overlay_visible(app);
     emit_overlay(
         app,
         BuffOverlayState {
@@ -1308,9 +1379,7 @@ fn show_waiting_overlay(app: &AppHandle) {
         hide_overlay(app);
         return;
     }
-    if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
-        let _ = overlay.show();
-    }
+    ensure_overlay_visible(app);
     emit_overlay(
         app,
         BuffOverlayState {
@@ -1336,8 +1405,8 @@ fn show_target_unavailable_overlay(app: &AppHandle) {
     if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = overlay.set_ignore_cursor_events(true);
         let _ = overlay.set_focusable(false);
-        let _ = overlay.show();
     }
+    ensure_overlay_visible(app);
     emit_overlay(
         app,
         BuffOverlayState {
@@ -1363,20 +1432,43 @@ fn hide_overlay(app: &AppHandle) {
             color_scheme: overlay_color_scheme(app),
         },
     );
-    if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
+    let should_hide = {
+        let state = app.state::<BuffAssistant>();
+        state.lock().overlay_window.mark_hidden()
+    };
+    if should_hide && let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = overlay.hide();
+    }
+}
+
+fn ensure_overlay_visible(app: &AppHandle) {
+    let should_show = {
+        let state = app.state::<BuffAssistant>();
+        state.lock().overlay_window.mark_visible()
+    };
+    if should_show && let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
+        let _ = overlay.show();
     }
 }
 
 fn apply_overlay_geometry(app: &AppHandle) {
     let state = app.state::<BuffAssistant>();
-    let settings = state.lock().config.settings.overlay.clone();
+    let (settings, should_resize) = {
+        let mut inner = state.lock();
+        let settings = inner.config.settings.overlay.clone();
+        let should_resize = inner
+            .overlay_window
+            .update_size((settings.width, settings.height));
+        (settings, should_resize)
+    };
     if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = overlay.set_position(PhysicalPosition::new(settings.x, settings.y));
-        let _ = overlay.set_size(LogicalSize::new(
-            f64::from(settings.width),
-            f64::from(settings.height),
-        ));
+        if should_resize {
+            let _ = overlay.set_size(LogicalSize::new(
+                f64::from(settings.width),
+                f64::from(settings.height),
+            ));
+        }
     }
 }
 
@@ -1486,7 +1578,22 @@ struct BuffMetric {
 mod tests {
     use image::DynamicImage;
 
-    use super::{NormalizedRect, crop_template_from_preview};
+    use super::{NormalizedRect, OverlayWindowCache, crop_template_from_preview};
+
+    #[test]
+    fn overlay_window_cache_only_requests_native_changes_when_state_changes() {
+        let mut cache = OverlayWindowCache::default();
+
+        assert!(cache.mark_visible());
+        assert!(!cache.mark_visible());
+        assert!(cache.update_size((330, 92)));
+        assert!(!cache.update_size((330, 92)));
+        assert!(cache.update_size((400, 120)));
+        assert!(cache.mark_hidden());
+        assert!(!cache.mark_hidden());
+        cache.invalidate_size();
+        assert!(cache.update_size((400, 120)));
+    }
 
     #[test]
     fn template_crop_is_relative_to_the_selected_search_region() {

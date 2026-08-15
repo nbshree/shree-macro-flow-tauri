@@ -56,7 +56,7 @@ export function BuffOverlayApp() {
     }
     const update = () => setRemainingMs(Math.max(0, state.expectedAtUnixMs! - Date.now()))
     update()
-    const timer = window.setInterval(update, 50)
+    const timer = window.setInterval(update, 100)
     return () => window.clearInterval(timer)
   }, [state.expectedAtUnixMs, state.mode])
 

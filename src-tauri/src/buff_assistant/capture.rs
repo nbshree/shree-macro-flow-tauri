@@ -19,11 +19,11 @@ use windows_capture::{
 };
 
 use super::{
-    detector::{StablePresenceDetector, TemplateData, match_template, rgba_to_gray},
+    detector::{StablePresenceDetector, TemplateData, match_template, rgba_to_gray_with_buffer},
     model::NormalizedRect,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct CapturedImage {
     pub width: u32,
     pub height: u32,
@@ -96,6 +96,9 @@ pub struct RuntimeCaptureFlags {
 pub struct RuntimeCaptureHandler {
     sender: FrameSender<RuntimeFrame>,
     discard_receiver: Receiver<RuntimeFrame>,
+    recycle_sender: FrameSender<CapturedImage>,
+    recycle_receiver: Receiver<CapturedImage>,
+    padding_buffer: Vec<u8>,
     region: NormalizedRect,
     app: AppHandle,
     purpose: CapturePurpose,
@@ -114,6 +117,7 @@ struct RuntimeCaptureProcessor {
     flags: RuntimeCaptureFlags,
     detector: StablePresenceDetector,
     prepared_template: Option<(f32, TemplateData)>,
+    gray_buffer: Vec<u8>,
     last_metric_at: Instant,
     match_started_at: Option<Instant>,
 }
@@ -125,6 +129,8 @@ impl GraphicsCaptureApiHandler for RuntimeCaptureHandler {
     fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
         let (sender, receiver) = bounded(1);
         let discard_receiver = receiver.clone();
+        let (recycle_sender, recycle_receiver) = bounded(2);
+        let processor_recycle_sender = recycle_sender.clone();
         let region = ctx.flags.region;
         let app = ctx.flags.app.clone();
         let purpose = ctx.flags.purpose;
@@ -132,7 +138,9 @@ impl GraphicsCaptureApiHandler for RuntimeCaptureHandler {
         let mut processor = RuntimeCaptureProcessor::new(ctx.flags);
         thread::spawn(move || {
             while let Ok(frame) = receiver.recv() {
-                if let Err(error) = processor.process(frame) {
+                let result = processor.process(&frame);
+                let _ = processor_recycle_sender.try_send(frame.image);
+                if let Err(error) = result {
                     super::handle_capture_error(
                         &processor.flags.app,
                         processor.flags.purpose,
@@ -145,6 +153,9 @@ impl GraphicsCaptureApiHandler for RuntimeCaptureHandler {
         Ok(Self {
             sender,
             discard_receiver,
+            recycle_sender,
+            recycle_receiver,
+            padding_buffer: Vec::new(),
             region,
             app,
             purpose,
@@ -162,16 +173,25 @@ impl GraphicsCaptureApiHandler for RuntimeCaptureHandler {
             return Ok(());
         }
         self.last_enqueued_at = Instant::now();
+        let mut image = self.recycle_receiver.try_recv().unwrap_or_default();
+        copy_frame_into(
+            frame,
+            Some(self.region),
+            &mut self.padding_buffer,
+            &mut image,
+        )?;
         let runtime_frame = RuntimeFrame {
             frame_width: frame.width(),
             frame_height: frame.height(),
             captured_at: Instant::now(),
-            image: copy_frame(frame, Some(self.region))?,
+            image,
         };
         match self.sender.try_send(runtime_frame) {
             Ok(()) => Ok(()),
             Err(TrySendError::Full(latest_frame)) => {
-                let _ = self.discard_receiver.try_recv();
+                if let Ok(discarded) = self.discard_receiver.try_recv() {
+                    let _ = self.recycle_sender.try_send(discarded.image);
+                }
                 match self.sender.try_send(latest_frame) {
                     Ok(()) | Err(TrySendError::Full(_)) => Ok(()),
                     Err(TrySendError::Disconnected(_)) => {
@@ -196,14 +216,21 @@ impl RuntimeCaptureProcessor {
             flags,
             detector,
             prepared_template: None,
+            gray_buffer: Vec::new(),
             last_metric_at: Instant::now() - Duration::from_secs(1),
             match_started_at: None,
         }
     }
 
-    fn process(&mut self, frame: RuntimeFrame) -> Result<(), String> {
+    fn process(&mut self, frame: &RuntimeFrame) -> Result<(), String> {
         super::handle_capture_frame(&self.flags.app, self.flags.purpose);
-        let gray = rgba_to_gray(frame.image.width, frame.image.height, &frame.image.rgba)?;
+        let gray_buffer = std::mem::take(&mut self.gray_buffer);
+        let gray = rgba_to_gray_with_buffer(
+            frame.image.width,
+            frame.image.height,
+            &frame.image.rgba,
+            gray_buffer,
+        )?;
         let template = self.template_for_frame(frame.frame_width, frame.frame_height)?;
         let confidence = match_template(&gray, template);
         let matched = confidence >= self.flags.threshold;
@@ -228,6 +255,7 @@ impl RuntimeCaptureProcessor {
             detected_at,
             should_emit_metric,
         );
+        self.gray_buffer = gray.into_raw();
         Ok(())
     }
 
@@ -417,6 +445,17 @@ fn start_runtime_capture_with_border(
 
 fn copy_frame(frame: &mut Frame, region: Option<NormalizedRect>) -> Result<CapturedImage, String> {
     let mut padding_buffer = Vec::new();
+    let mut image = CapturedImage::default();
+    copy_frame_into(frame, region, &mut padding_buffer, &mut image)?;
+    Ok(image)
+}
+
+fn copy_frame_into(
+    frame: &mut Frame,
+    region: Option<NormalizedRect>,
+    padding_buffer: &mut Vec<u8>,
+    image: &mut CapturedImage,
+) -> Result<(), String> {
     let buffer = if let Some(region) = region {
         let (start_x, start_y, end_x, end_y) = region.pixel_bounds(frame.width(), frame.height());
         frame
@@ -427,14 +466,13 @@ fn copy_frame(frame: &mut Frame, region: Option<NormalizedRect>) -> Result<Captu
             .buffer()
             .map_err(|error| format!("读取游戏画面失败：{error}"))?
     };
-    let width = buffer.width();
-    let height = buffer.height();
-    let rgba = buffer.as_nopadding_buffer(&mut padding_buffer).to_vec();
-    Ok(CapturedImage {
-        width,
-        height,
-        rgba,
-    })
+    image.width = buffer.width();
+    image.height = buffer.height();
+    image.rgba.clear();
+    image
+        .rgba
+        .extend_from_slice(buffer.as_nopadding_buffer(padding_buffer));
+    Ok(())
 }
 
 #[cfg(test)]

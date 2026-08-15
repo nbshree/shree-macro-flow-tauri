@@ -1,13 +1,16 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::File,
     path::{Path, PathBuf},
     sync::mpsc::{self, RecvTimeoutError, Sender},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
-use rodio::{Decoder, DeviceSinkBuilder, Player, Source, buffer::SamplesBuffer, source::SineWave};
+use rodio::{
+    Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source, buffer::SamplesBuffer,
+    source::SineWave,
+};
 use tauri::{AppHandle, Manager};
 
 use crate::state::AppState;
@@ -30,61 +33,90 @@ struct AudioRequest {
     volume: f32,
 }
 
+enum AudioCommand {
+    Preload(Vec<PathBuf>),
+    Play(AudioRequest),
+}
+
 #[derive(Clone)]
 pub struct AudioEngine {
-    sender: Sender<AudioRequest>,
+    sender: Sender<AudioCommand>,
 }
 
 impl AudioEngine {
     pub fn start(app: AppHandle) -> Self {
-        let (sender, receiver) = mpsc::channel::<AudioRequest>();
+        let (sender, receiver) = mpsc::channel::<AudioCommand>();
         thread::spawn(move || {
+            let mut stream = None::<MixerDeviceSink>;
+            let mut player = None::<Player>;
+            let mut idle_since = None;
             let mut cache = HashMap::<PathBuf, SamplesBuffer>::new();
-            while let Ok(mut request) = receiver.recv() {
-                let mut stream = match DeviceSinkBuilder::open_default_sink() {
-                    Ok(stream) => stream,
-                    Err(error) => {
-                        app.state::<AppState>()
-                            .log(&app, format!("提示音播放失败：无法打开声音设备：{error}"));
-                        continue;
+
+            loop {
+                let command = if stream.is_some() {
+                    match receiver.recv_timeout(PLAYBACK_POLL_INTERVAL) {
+                        Ok(command) => Some(command),
+                        Err(RecvTimeoutError::Timeout) => None,
+                        Err(RecvTimeoutError::Disconnected) => break,
+                    }
+                } else {
+                    match receiver.recv() {
+                        Ok(command) => Some(command),
+                        Err(_) => break,
                     }
                 };
-                stream.log_on_drop(false);
 
-                'playback: loop {
-                    let player = Player::connect_new(stream.mixer());
-                    player.set_volume(request.volume.clamp(0.0, 1.0));
-                    match request.source {
-                        ResolvedSoundSource::Sine => player.append(sine_wave(request.cue)),
-                        ResolvedSoundSource::Wav(path) => match cached_wav(&path, &mut cache) {
-                            Ok(sound) => player.append(sound),
-                            Err(_) => player.append(sine_wave(request.cue)),
-                        },
-                    }
-
-                    loop {
-                        match receiver.recv_timeout(PLAYBACK_POLL_INTERVAL) {
-                            Ok(next_request) => {
-                                player.stop();
-                                request = next_request;
-                                continue 'playback;
+                match command {
+                    None => {}
+                    Some(AudioCommand::Preload(paths)) => preload_wavs(paths, &mut cache),
+                    Some(AudioCommand::Play(request)) => {
+                        if let Some(current) = player.take() {
+                            current.stop();
+                        }
+                        if stream.is_none() {
+                            match DeviceSinkBuilder::open_default_sink() {
+                                Ok(mut opened) => {
+                                    opened.log_on_drop(false);
+                                    stream = Some(opened);
+                                }
+                                Err(error) => {
+                                    app.state::<AppState>().log(
+                                        &app,
+                                        format!("提示音播放失败：无法打开声音设备：{error}"),
+                                    );
+                                    continue;
+                                }
                             }
-                            Err(RecvTimeoutError::Timeout) if player.empty() => break,
-                            Err(RecvTimeoutError::Timeout) => {}
-                            Err(RecvTimeoutError::Disconnected) => return,
                         }
-                    }
 
-                    // Keep the device alive briefly so countdown sounds can reuse one stream,
-                    // then release it instead of holding headphones open for the app lifetime.
-                    match receiver.recv_timeout(AUDIO_IDLE_TIMEOUT) {
-                        Ok(next_request) => {
-                            request = next_request;
-                            continue 'playback;
+                        let next = Player::connect_new(
+                            stream.as_ref().expect("audio stream was opened").mixer(),
+                        );
+                        next.set_volume(request.volume.clamp(0.0, 1.0));
+                        match request.source {
+                            ResolvedSoundSource::Sine => next.append(sine_wave(request.cue)),
+                            ResolvedSoundSource::Wav(path) => match cached_wav(&path, &mut cache) {
+                                Ok(sound) => next.append(sound),
+                                Err(_) => next.append(sine_wave(request.cue)),
+                            },
                         }
-                        Err(RecvTimeoutError::Timeout) => break 'playback,
-                        Err(RecvTimeoutError::Disconnected) => return,
+                        player = Some(next);
+                        idle_since = None;
                     }
+                }
+
+                if player.as_ref().is_some_and(Player::empty) {
+                    player = None;
+                }
+                if stream.is_some()
+                    && should_release_audio_session(
+                        player.is_some(),
+                        Instant::now(),
+                        &mut idle_since,
+                    )
+                {
+                    stream = None;
+                    idle_since = None;
                 }
             }
         });
@@ -93,11 +125,39 @@ impl AudioEngine {
     }
 
     pub fn play(&self, cue: BuffSoundCue, source: ResolvedSoundSource, volume: f32) {
-        let _ = self.sender.send(AudioRequest {
+        let _ = self.sender.send(AudioCommand::Play(AudioRequest {
             cue,
             source,
             volume,
-        });
+        }));
+    }
+
+    pub fn preload(&self, paths: Vec<PathBuf>) {
+        let _ = self.sender.send(AudioCommand::Preload(paths));
+    }
+}
+
+fn should_release_audio_session(
+    has_active_player: bool,
+    now: Instant,
+    idle_since: &mut Option<Instant>,
+) -> bool {
+    if has_active_player {
+        *idle_since = None;
+        return false;
+    }
+    match idle_since {
+        Some(started_at) => now.duration_since(*started_at) >= AUDIO_IDLE_TIMEOUT,
+        None => {
+            *idle_since = Some(now);
+            false
+        }
+    }
+}
+
+fn preload_wavs(paths: Vec<PathBuf>, cache: &mut HashMap<PathBuf, SamplesBuffer>) {
+    for path in paths.into_iter().collect::<HashSet<_>>() {
+        let _ = cached_wav(&path, cache);
     }
 }
 
@@ -146,4 +206,48 @@ fn sine_wave(cue: BuffSoundCue) -> impl Source + Send + 'static {
         }
     };
     SineWave::new(frequency).take_duration(Duration::from_millis(duration))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preload_and_playback_lookup_share_the_same_cache() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources/buff-sounds/template-1/triggered.wav");
+        let mut cache = HashMap::new();
+
+        preload_wavs(vec![path.clone(), path.clone()], &mut cache);
+
+        assert_eq!(cache.len(), 1);
+        assert!(cached_wav(&path, &mut cache).is_ok());
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn preload_ignores_invalid_paths_without_poisoning_the_cache() {
+        let mut cache = HashMap::new();
+
+        preload_wavs(vec![PathBuf::from("missing-sound.wav")], &mut cache);
+
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn active_playback_keeps_the_audio_session_open() {
+        let now = Instant::now();
+        let mut idle_since = Some(now - AUDIO_IDLE_TIMEOUT);
+
+        assert!(!should_release_audio_session(true, now, &mut idle_since));
+        assert!(idle_since.is_none());
+    }
+
+    #[test]
+    fn audio_session_is_released_at_idle_timeout() {
+        let now = Instant::now();
+        let mut idle_since = Some(now - AUDIO_IDLE_TIMEOUT);
+
+        assert!(should_release_audio_session(false, now, &mut idle_since));
+    }
 }
