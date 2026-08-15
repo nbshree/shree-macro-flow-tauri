@@ -4,7 +4,7 @@ use std::{
     path::Path,
     sync::{Mutex, MutexGuard},
     thread,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use serde::Serialize;
@@ -15,8 +15,8 @@ use time::format_description::well_known::Rfc3339;
 use crate::state::AppState;
 
 const LEGACY_UPDATER_APP_NAMES: &[&str] = &["自动点击流程台"];
-const INSTALLER_CLEANUP_RETRY_DELAY: Duration = Duration::from_secs(2);
-const INSTALLER_CLEANUP_ATTEMPTS: usize = 10;
+// Tauri 在安装当前更新时也会创建同名目录，只清理足够旧的残留目录以避免抢删安装器。
+const INSTALLER_CLEANUP_MIN_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 pub fn schedule_installer_cleanup(app_name: String) {
     thread::spawn(move || {
@@ -27,17 +27,21 @@ pub fn schedule_installer_cleanup(app_name: String) {
             }
         }
 
-        let temp_dir = std::env::temp_dir();
-        for attempt in 0..INSTALLER_CLEANUP_ATTEMPTS {
-            if attempt > 0 {
-                thread::sleep(INSTALLER_CLEANUP_RETRY_DELAY);
-            }
-            let _ = cleanup_installer_directories(&temp_dir, &app_names);
-        }
+        let _ = cleanup_installer_directories(
+            &std::env::temp_dir(),
+            &app_names,
+            SystemTime::now(),
+            INSTALLER_CLEANUP_MIN_AGE,
+        );
     });
 }
 
-fn cleanup_installer_directories(temp_dir: &Path, app_names: &[String]) -> io::Result<usize> {
+fn cleanup_installer_directories(
+    temp_dir: &Path,
+    app_names: &[String],
+    now: SystemTime,
+    min_age: Duration,
+) -> io::Result<usize> {
     let mut removed = 0;
     for entry in fs::read_dir(temp_dir)? {
         let Ok(entry) = entry else {
@@ -49,6 +53,10 @@ fn cleanup_installer_directories(temp_dir: &Path, app_names: &[String]) -> io::R
         if !file_type.is_dir()
             || file_type.is_symlink()
             || !is_installer_directory_name(&entry.file_name(), app_names)
+            || !entry
+                .metadata()
+                .and_then(|metadata| metadata.modified())
+                .is_ok_and(|modified_at| is_stale_modified_at(modified_at, now, min_age))
         {
             continue;
         }
@@ -58,6 +66,11 @@ fn cleanup_installer_directories(temp_dir: &Path, app_names: &[String]) -> io::R
         }
     }
     Ok(removed)
+}
+
+fn is_stale_modified_at(modified_at: SystemTime, now: SystemTime, min_age: Duration) -> bool {
+    now.duration_since(modified_at)
+        .is_ok_and(|age| age >= min_age)
 }
 
 fn is_installer_directory_name(name: &OsStr, app_names: &[String]) -> bool {
@@ -438,7 +451,7 @@ fn install_in_progress_error() -> AppUpdateError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::UNIX_EPOCH;
 
     fn unique_test_directory(label: &str) -> std::path::PathBuf {
         let nonce = SystemTime::now()
@@ -475,7 +488,7 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_removes_only_matching_installer_directories() {
+    fn cleanup_removes_only_stale_matching_installer_directories() {
         let base = unique_test_directory("cleanup");
         let matching = base.join("shree盒子-2.0.10-updater-a1B2c3");
         let legacy = base.join("自动点击流程台-1.8.0-updater-deaMb3");
@@ -487,13 +500,57 @@ mod tests {
         fs::write(legacy.join("installer.exe"), b"test").expect("write legacy installer");
 
         let app_names = vec!["shree盒子".to_owned(), "自动点击流程台".to_owned()];
-        let removed = cleanup_installer_directories(&base, &app_names).expect("cleanup installers");
+        let cleanup_time = SystemTime::now()
+            .checked_add(INSTALLER_CLEANUP_MIN_AGE + Duration::from_secs(1))
+            .expect("cleanup time");
+        let removed = cleanup_installer_directories(
+            &base,
+            &app_names,
+            cleanup_time,
+            INSTALLER_CLEANUP_MIN_AGE,
+        )
+        .expect("cleanup installers");
 
         assert_eq!(removed, 2);
         assert!(!matching.exists());
         assert!(!legacy.exists());
         assert!(unrelated.exists());
         fs::remove_dir_all(base).expect("remove test directory");
+    }
+
+    #[test]
+    fn cleanup_preserves_recent_installer_directories() {
+        let base = unique_test_directory("recent-cleanup");
+        let recent = base.join("shree盒子-2.0.16-updater-a1B2c3");
+        fs::create_dir_all(&recent).expect("create recent updater directory");
+        fs::write(recent.join("installer.exe"), b"test").expect("write installer");
+
+        let app_names = vec!["shree盒子".to_owned()];
+        let removed = cleanup_installer_directories(
+            &base,
+            &app_names,
+            SystemTime::now(),
+            INSTALLER_CLEANUP_MIN_AGE,
+        )
+        .expect("cleanup installers");
+
+        assert_eq!(removed, 0);
+        assert!(recent.exists());
+        fs::remove_dir_all(base).expect("remove test directory");
+    }
+
+    #[test]
+    fn cleanup_preserves_directories_with_future_timestamps() {
+        let now = SystemTime::now();
+        let future = now
+            .checked_add(Duration::from_secs(1))
+            .expect("future timestamp");
+
+        assert!(!is_stale_modified_at(
+            future,
+            now,
+            INSTALLER_CLEANUP_MIN_AGE
+        ));
     }
 
     #[test]
