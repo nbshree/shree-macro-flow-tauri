@@ -3,6 +3,7 @@ import {
   Castle,
   ChevronDown,
   Gamepad2,
+  HeartHandshake,
   LoaderCircle,
   MessageSquareText,
   Palette,
@@ -39,12 +40,14 @@ type WorkspaceHeaderProps = {
   themeTriggerRef: RefObject<HTMLButtonElement | null>
   updateTriggerRef: RefObject<HTMLButtonElement | null>
   feedbackTriggerRef: RefObject<HTMLButtonElement | null>
+  supportTriggerRef: RefObject<HTMLButtonElement | null>
   restrictedWorkspacesUnlocked: boolean
   isCheckingUpdate: boolean
   isSwitchingWorkspace: boolean
   onWorkspaceChange: (workspace: WorkspaceView) => void
   onOpenTheme: () => void
   onOpenFeedback: () => void
+  onOpenSupport: () => void
   onCheckForUpdate: () => void
 }
 
@@ -91,12 +94,14 @@ export function WorkspaceHeader({
   themeTriggerRef,
   updateTriggerRef,
   feedbackTriggerRef,
+  supportTriggerRef,
   restrictedWorkspacesUnlocked,
   isCheckingUpdate,
   isSwitchingWorkspace,
   onWorkspaceChange,
   onOpenTheme,
   onOpenFeedback,
+  onOpenSupport,
   onCheckForUpdate
 }: WorkspaceHeaderProps) {
   const { state } = controller
@@ -186,6 +191,16 @@ export function WorkspaceHeader({
         >
           <MessageSquareText aria-hidden="true" size={17} />
           <span>意见反馈</span>
+        </Button>
+        <Button
+          className="support-trigger rounded-full"
+          ref={supportTriggerRef}
+          type="button"
+          variant="outline"
+          onClick={onOpenSupport}
+        >
+          <HeartHandshake aria-hidden="true" size={17} />
+          <span>声明与支持</span>
         </Button>
         <Button
           className="theme-trigger rounded-full"

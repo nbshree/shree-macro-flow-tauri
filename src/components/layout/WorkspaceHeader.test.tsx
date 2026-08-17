@@ -14,7 +14,8 @@ function renderHeader(
   activeWorkspace: WorkspaceView = 'macro',
   isSwitchingWorkspace = false,
   restrictedWorkspacesUnlocked = true,
-  onOpenFeedback = vi.fn()
+  onOpenFeedback = vi.fn(),
+  onOpenSupport = vi.fn()
 ) {
   const controller = createMacroController({
     state: createMacroState({ appearance: { themeId, cleanMode: false } })
@@ -30,17 +31,19 @@ function renderHeader(
       themeTriggerRef={createRef<HTMLButtonElement>()}
       updateTriggerRef={createRef<HTMLButtonElement>()}
       feedbackTriggerRef={createRef<HTMLButtonElement>()}
+      supportTriggerRef={createRef<HTMLButtonElement>()}
       restrictedWorkspacesUnlocked={restrictedWorkspacesUnlocked}
       isCheckingUpdate={false}
       isSwitchingWorkspace={isSwitchingWorkspace}
       onWorkspaceChange={onWorkspaceChange}
       onOpenTheme={onOpenTheme}
       onOpenFeedback={onOpenFeedback}
+      onOpenSupport={onOpenSupport}
       onCheckForUpdate={onCheckForUpdate}
     />
   )
 
-  return { onCheckForUpdate, onOpenFeedback, onOpenTheme, onWorkspaceChange }
+  return { onCheckForUpdate, onOpenFeedback, onOpenSupport, onOpenTheme, onWorkspaceChange }
 }
 
 describe('WorkspaceHeader', () => {
@@ -116,6 +119,24 @@ describe('WorkspaceHeader', () => {
     )
 
     await user.click(screen.getByRole('button', { name: '意见反馈' }))
+
+    expect(renderedCallback).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens the statement and support dialog from the header action', async () => {
+    const user = userEvent.setup()
+    const onOpenSupport = vi.fn()
+    const { onOpenSupport: renderedCallback } = renderHeader(
+      'longyin',
+      vi.fn(),
+      'macro',
+      false,
+      true,
+      vi.fn(),
+      onOpenSupport
+    )
+
+    await user.click(screen.getByRole('button', { name: '声明与支持' }))
 
     expect(renderedCallback).toHaveBeenCalledTimes(1)
   })

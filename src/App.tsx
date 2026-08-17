@@ -8,6 +8,7 @@ import { FlowPanel } from './components/panels/FlowPanel'
 import { LogPanel } from './components/panels/LogPanel'
 import { ProfilePanel } from './components/panels/ProfilePanel'
 import { SettingsPanel } from './components/panels/SettingsPanel'
+import { SupportDialog } from './components/support'
 import { ThemeBackground, ThemeDialog } from './components/theme'
 import { UpdateDialog } from './components/update/UpdateDialog'
 import { Alert, AlertDescription } from './components/ui/alert'
@@ -46,9 +47,11 @@ function App(): React.JSX.Element {
   const [workspaceSwitchError, setWorkspaceSwitchError] = useState<string | null>(null)
   const [themeDialogOpen, setThemeDialogOpen] = useState(false)
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false)
+  const [supportDialogOpen, setSupportDialogOpen] = useState(false)
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const themeTriggerRef = useRef<HTMLButtonElement>(null)
   const feedbackTriggerRef = useRef<HTMLButtonElement>(null)
+  const supportTriggerRef = useRef<HTMLButtonElement>(null)
   const updateTriggerRef = useRef<HTMLButtonElement>(null)
   const installBlockedReason = getInstallBlockedReason({
     macroIsRunning: controller.state.isRunning,
@@ -166,12 +169,14 @@ function App(): React.JSX.Element {
                 themeTriggerRef={themeTriggerRef}
                 updateTriggerRef={updateTriggerRef}
                 feedbackTriggerRef={feedbackTriggerRef}
+                supportTriggerRef={supportTriggerRef}
                 restrictedWorkspacesUnlocked={restrictedWorkspacesUnlocked}
                 isCheckingUpdate={updater.status === 'checking'}
                 isSwitchingWorkspace={workspaceSwitching}
                 onWorkspaceChange={(workspace) => void switchWorkspace(workspace)}
                 onOpenTheme={() => setThemeDialogOpen(true)}
                 onOpenFeedback={() => setFeedbackDialogOpen(true)}
+                onOpenSupport={() => setSupportDialogOpen(true)}
                 onCheckForUpdate={() => void updater.checkForUpdate()}
               />
               {workspaceSwitchError ? (
@@ -252,6 +257,11 @@ function App(): React.JSX.Element {
             returnFocusRef={feedbackTriggerRef}
             onOpenChange={setFeedbackDialogOpen}
             onSubmit={submitFeedback}
+          />
+          <SupportDialog
+            open={supportDialogOpen}
+            returnFocusRef={supportTriggerRef}
+            onOpenChange={setSupportDialogOpen}
           />
           <UpdateDialog updater={updater} returnFocusRef={updateTriggerRef} />
         </main>
