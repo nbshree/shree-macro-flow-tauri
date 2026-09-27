@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { GripVertical, Keyboard, ListChecks, MousePointerClick, Trash2 } from 'lucide-react'
 
 import { formatKeyStep, type MacroController } from '../../hooks/useMacroController'
@@ -13,6 +14,8 @@ type FlowPanelProps = {
 }
 
 export function FlowPanel({ controller }: FlowPanelProps) {
+  const dragRef = useRef<{ pointId: string; targetIndex: number; pointerId: number } | null>(null)
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
   const {
     captureKeyStep,
     capturePointKey,
@@ -35,6 +38,55 @@ export function FlowPanel({ controller }: FlowPanelProps) {
     updatePoint,
     updateState
   } = controller
+
+  useEffect(() => {
+    function getTargetIndex(event: PointerEvent): number | null {
+      const row = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>('[data-flow-index]')
+      if (!row) return null
+
+      const targetIndex = Number(row.dataset.flowIndex)
+      return Number.isInteger(targetIndex) ? targetIndex : null
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      const drag = dragRef.current
+      if (!drag || event.pointerId !== drag.pointerId) return
+
+      const targetIndex = getTargetIndex(event)
+      if (targetIndex === null) return
+      drag.targetIndex = targetIndex
+      setDropTargetIndex(targetIndex)
+    }
+
+    function handlePointerUp(event: PointerEvent) {
+      const drag = dragRef.current
+      if (!drag || event.pointerId !== drag.pointerId) return
+
+      const targetIndex = getTargetIndex(event)
+      dragRef.current = null
+      setDropTargetIndex(null)
+      if (!isEditingLocked) dropPoint(targetIndex ?? drag.targetIndex)
+      else setDraggingPointId(null)
+    }
+
+    function handlePointerCancel(event: PointerEvent) {
+      if (!dragRef.current || event.pointerId !== dragRef.current.pointerId) return
+      dragRef.current = null
+      setDropTargetIndex(null)
+      setDraggingPointId(null)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerCancel)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerCancel)
+    }
+  }, [dropPoint, isEditingLocked, setDraggingPointId])
 
   return (
     <section className="ui-panel flow-panel" aria-labelledby="flow-panel-title">
@@ -132,13 +184,11 @@ export function FlowPanel({ controller }: FlowPanelProps) {
                     className="flow-grid flow-table__row"
                     data-active={String(state.currentIndex === index)}
                     data-dragging={String(draggingPointId === point.id)}
+                    data-drop-target={String(dropTargetIndex === index)}
                     data-enabled={String(draft.enabled)}
+                    data-flow-index={index}
                     key={point.id}
                     role="row"
-                    onDragOver={(event) => {
-                      if (!isEditingLocked) event.preventDefault()
-                    }}
-                    onDrop={() => dropPoint(index)}
                   >
                     <div className="flow-order" role="cell">
                       <Tooltip>
@@ -147,14 +197,19 @@ export function FlowPanel({ controller }: FlowPanelProps) {
                             aria-label={`拖拽步骤 ${index + 1} 排序`}
                             className="flow-drag-handle cursor-grab active:cursor-grabbing active:translate-y-0 disabled:cursor-not-allowed"
                             disabled={isEditingLocked}
-                            draggable={!isEditingLocked}
                             size="icon-compact"
                             type="button"
                             variant="ghost"
-                            onDragEnd={() => setDraggingPointId(null)}
-                            onDragStart={(event) => {
+                            onPointerDown={(event) => {
+                              if (isEditingLocked || event.button !== 0) return
+                              event.preventDefault()
+                              dragRef.current = {
+                                pointId: point.id,
+                                targetIndex: index,
+                                pointerId: event.pointerId
+                              }
                               setDraggingPointId(point.id)
-                              event.dataTransfer.effectAllowed = 'move'
+                              event.currentTarget.setPointerCapture?.(event.pointerId)
                             }}
                           >
                             <GripVertical aria-hidden="true" size={16} />
@@ -287,7 +342,7 @@ export function FlowPanel({ controller }: FlowPanelProps) {
                         onBlur={() => savePoint(point.id)}
                         onChange={(event) =>
                           updateDraftPoint(point.id, {
-                            delaySeconds: Math.max(0.1, Number(event.target.value) || 0.1)
+                            delaySeconds: Number(event.target.value) || 0
                           })
                         }
                       />

@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -102,6 +102,45 @@ describe('FlowPanel', () => {
     await user.click(testButton)
     expect(api.testPoint).toHaveBeenCalledWith('double-click-1')
     expect(controller.updateState).toHaveBeenCalledTimes(1)
+  })
+
+  it('reorders a step by tracking pointer movement over the target row', () => {
+    const controller = createFlowController()
+    installMacroApi(createMacroApi(controller.state))
+    renderWithUiProviders(<FlowPanel controller={controller} />)
+
+    const handle = screen.getByRole('button', { name: '拖拽步骤 1 排序' })
+    const targetRow = screen.getAllByRole('row')[3]
+    const elementFromPointDescriptor = Object.getOwnPropertyDescriptor(document, 'elementFromPoint')
+    const elementFromPoint = vi.fn(() => targetRow)
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: elementFromPoint
+    })
+
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 20, clientY: 100 })
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 20, clientY: 100 })
+
+    expect(elementFromPoint).toHaveBeenCalled()
+    expect(controller.dropPoint).toHaveBeenCalledWith(2)
+    if (elementFromPointDescriptor) {
+      Object.defineProperty(document, 'elementFromPoint', elementFromPointDescriptor)
+    } else {
+      Reflect.deleteProperty(document, 'elementFromPoint')
+    }
+  })
+
+  it('allows entering a leading zero in the step delay field', () => {
+    const controller = createFlowController()
+    installMacroApi(createMacroApi(controller.state))
+    renderWithUiProviders(<FlowPanel controller={controller} />)
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: '步骤 1 等待秒数' }), {
+      target: { value: '0' }
+    })
+
+    expect(controller.updateDraftPoint).toHaveBeenCalledWith('click-1', { delaySeconds: 0 })
   })
 
   it.each([
