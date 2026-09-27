@@ -141,7 +141,8 @@ pub fn rgba_to_gray_with_buffer(
         return Err("捕获画面数据不完整".into());
     }
     output.resize(width as usize * height as usize, 0);
-    for (pixel, source) in output.iter_mut().zip(rgba.chunks_exact(4)) {
+    let (rgba_chunks, _) = rgba.as_chunks::<4>();
+    for (pixel, source) in output.iter_mut().zip(rgba_chunks) {
         let luminance =
             (u32::from(source[0]) * 77 + u32::from(source[1]) * 150 + u32::from(source[2]) * 29)
                 >> 8;
