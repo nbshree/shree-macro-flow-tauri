@@ -223,8 +223,9 @@ git config --add remote.origin.pushurl git@github.com:nbshree/shree-macro-flow-t
 尝试不允许覆盖同版本；手动重新运行失败的 Actions run 时，`github.run_attempt > 1` 会自动
 启用修复模式。
 
-如果失败原因位于已经打标签的发布脚本本身，不得移动标签。修复 main 上的脚本后，从 main
-手动触发同一工作流；它会检出原标签源码，只从 main 覆盖发布脚本并启用修复模式：
+如果失败原因位于已经打标签的发布脚本或构建校验逻辑，不得移动标签。修复 main 上的脚本后，
+从 main 手动触发同一工作流；启用修复模式时，校验和正式安装包均使用修复后的 main 源码，
+但发布目标仍是原有标签：
 
 ```powershell
 gh workflow run gitee-release.yml `
